@@ -1,7 +1,6 @@
 import Agent from "./models/Agent.js";
 import SystemInfo from "./models/SystemInfo.js";
 import InstalledApps from "./models/InstalledApps.js";
-import USBDevice from "./models/UsbDevices.js";
 import PortScanData from "./models/PortScan.js";
 import TaskInfo from "./models/TaskInfo.js";
 
@@ -15,7 +14,7 @@ export async function saveAgentData(payload) {
     const { type, agentId, data } = payload;
     const timestamp = payload.timestamp || new Date().toISOString();
 
-    // 1️⃣ Create or update Agent entry first
+    // 1️⃣ Create or update Agent entry
     try {
       await Agent.findOneAndUpdate(
         { agentId },
@@ -35,7 +34,13 @@ export async function saveAgentData(payload) {
       return;
     }
 
-    // 2️⃣ Select the correct model
+    // 2️⃣ Skip usb_devices entirely
+    if (type === "usb_devices") {
+      console.log("ℹ️ USB data is handled separately. Skipping save here.");
+      return;
+    }
+
+    // 3️⃣ Select the correct model
     let Model;
     switch (type) {
       case "system_info":
@@ -43,9 +48,6 @@ export async function saveAgentData(payload) {
         break;
       case "installed_apps":
         Model = InstalledApps;
-        break;
-      case "usb_devices":
-        Model = USBDevice;
         break;
       case "port_scan":
         Model = PortScanData;
@@ -60,7 +62,7 @@ export async function saveAgentData(payload) {
 
     const doc = { agentId, timestamp, type, data };
 
-    // 3️⃣ Save to MongoDB
+    // 4️⃣ Save to MongoDB
     try {
       await Model.findOneAndUpdate(
         { agentId },

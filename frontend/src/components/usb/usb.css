@@ -1,9 +1,11 @@
+/* usb.css */
+
+/* Container & main layout */
 .usb-control-container.dark {
   display: flex;
   background: #0b1e2d;
   color: #e2e8f0;
   height: 100vh;
-   ;
   font-family: "Segoe UI", sans-serif;
 }
 
@@ -24,54 +26,20 @@
   margin-bottom: 20px;
 }
 
-.tab-bar {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
-}
-
-.tab-btn {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 8px;
-  padding: 10px 16px;
-  cursor: pointer;
-  transition: 0.2s;
-  font-weight: 500;
-  color: #cbd5e1;
-}
-
-.tab-btn:hover {
-  background: #2c3e55;
-}
-
-.tab-btn.active {
-  background: #0077b6;
-  color: white;
-  border-color: #0077b6;
-}
-
-.count {
-  background: #0b1e2d;
-  color: #a8dadc;
-  border-radius: 12px;
-  padding: 2px 8px;
-  margin-left: 8px;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
+/* Table wrapper */
 .table-wrapper {
   background: #1b263b;
   border-radius: 10px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   overflow-x: auto;
+  margin-top: 20px;
 }
 
 .usb-table {
   width: 100%;
   border-collapse: collapse;
   color: #e2e8f0;
+  font-size: 0.95rem;
 }
 
 .usb-table th,
@@ -85,6 +53,22 @@
   background: #162436;
   font-weight: 600;
   color: #94a3b8;
+  position: sticky;
+  top: 0;
+}
+
+.usb-table tr.clickable {
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.usb-table tr.clickable:hover {
+  background: #1f2a3a;
+}
+
+.usb-table tr.selected {
+  background: #0077b6;
+  color: white;
 }
 
 .no-data {
@@ -93,95 +77,173 @@
   padding: 20px 0;
 }
 
+/* Status tags */
 .status-tag {
-  padding: 6px 10px;
+  padding: 4px 10px;
   border-radius: 6px;
   font-size: 0.85rem;
   text-transform: capitalize;
   font-weight: 600;
+  display: inline-block;
+  min-width: 70px;
+  text-align: center;
 }
 
-.status-tag.pending {
-  background: #fef3c7;
-  color: #92400e;
-}
-.status-tag.approved {
+.status-tag.allowed {
   background: #dcfce7;
   color: #166534;
 }
-.status-tag.denied {
+
+.status-tag.blocked {
   background: #fee2e2;
   color: #991b1b;
 }
-.status-tag.blocked {
-  background: #e0e7ff;
-  color: #3730a3;
+
+.status-tag.waitingforapproval {
+  background: #fef3c7;
+  color: #92400e;
 }
 
-.action-btn {
-  border: none;
-  padding: 6px 12px;
-  border-radius: 6px;
-  margin-right: 6px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: 0.2s;
+/* USB user details */
+.usb-user-details {
+  margin-top: 30px;
+  animation: fadeIn 0.3s ease-in;
 }
 
-.action-btn.approve {
+.usb-user-details h2 {
+  font-size: 1.4rem;
+  margin-bottom: 15px;
+  color: #f8fafc;
+}
+
+.agent-lists {
+  overflow-x: auto;
+}
+
+/* Back button */
+.back-btn {
   background: #0077b6;
   color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 15px;
+  transition: background 0.2s;
 }
-.action-btn.approve:hover {
+
+.back-btn:hover {
   background: #005c91;
 }
 
-.action-btn.deny {
-  background: #dc2626;
-  color: white;
-}
-.action-btn.deny:hover {
-  background: #991b1b;
-}
-
-.action-btn.block {
-  background: #f59e0b;
-  color: white;
-}
-.action-btn.block:hover {
-  background: #b45309;
-}
-
+/* Loading text */
 .loading {
   text-align: center;
   color: #94a3b8;
   font-size: 1rem;
 }
 
-/* Tooltip */
-.tooltip-container {
-  position: relative;
-  cursor: help;
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.tooltip-text {
-  visibility: hidden;
-  opacity: 0;
-  position: absolute;
-  bottom: 120%;
-  left: 0;
-  background-color: #1e293b;
-  color: #f1f5f9;
-  padding: 8px 10px;
+/* Responsive */
+@media (max-width: 768px) {
+  .usb-main {
+    padding: 16px 20px;
+  }
+  .usb-table th,
+  .usb-table td {
+    padding: 10px 12px;
+  }
+  .status-tag {
+    font-size: 0.75rem;
+    min-width: 60px;
+  }
+}
+
+/* Base dropdown */
+.status-select {
+  padding: 6px 12px;
+  font-size: 14px;
+  font-weight: 600;
   border-radius: 6px;
-  white-space: nowrap;
-  font-size: 0.85rem;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-  transition: opacity 0.2s;
-  z-index: 10;
+  border: 1px solid transparent;
+  cursor: pointer;
+  color: #e2e8f0;
+  background: #1b263b;
+  min-width: 140px;
+  text-align: center;
+  transition: all 0.2s ease-in-out;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.3);
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
 }
 
-.tooltip-container:hover .tooltip-text {
-  visibility: visible;
-  opacity: 1;
+/* Subtle hover effect */
+.status-select:hover {
+  border-color: #0077b6;
+}
+
+/* Maintain same background when dropdown is open (Chrome/Edge fix) */
+.status-select:focus {
+  outline: none;
+  background-color: inherit !important;
+  color: inherit !important;
+  border-color: #00b4d8;
+  box-shadow: 0 0 6px rgba(0, 180, 216, 0.4);
+}
+
+/* Prevent OS styling on Windows */
+.status-select::-ms-expand {
+  display: none;
+}
+
+/* Allowed */
+.status-select.allowed {
+  background: linear-gradient(135deg, #102a19, #1f5130);
+  border-color: #22c55e;
+}
+.status-select.allowed:hover {
+  background: linear-gradient(135deg, #1a3b25, #2e6b3e);
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.3);
+}
+
+/* Blocked */
+.status-select.blocked {
+  background: linear-gradient(135deg, #2b0f0f, #4a1b1b);
+  border-color: #ef4444;
+}
+.status-select.blocked:hover {
+  background: linear-gradient(135deg, #3d1616, #6b2222);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
+}
+
+/* Waiting */
+.status-select.waiting {
+  background: linear-gradient(135deg, #2e260e, #4a3b16);
+  border-color: #facc15;
+}
+.status-select.waiting:hover {
+  background: linear-gradient(135deg, #3e3211, #6b551b);
+  box-shadow: 0 0 8px rgba(250, 204, 21, 0.3);
+}
+
+/* Option styles (these control dropdown menu look) */
+.status-select option {
+  background-color: #1b263b; /* keep dark background */
+  color: #e2e8f0;
+  font-weight: 600;
+  border: none;
+  padding: 6px 10px;
 }

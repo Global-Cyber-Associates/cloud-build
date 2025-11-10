@@ -1,172 +1,183 @@
+// src/components/UsbControl.jsx
 import React, { useState, useEffect } from "react";
-import axios from "axios";
 import Sidebar from "../navigation/sidenav";
 import "./usb.css";
 
-const API_BASE = import.meta.env.VITE_BACKEND_URL;
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
 const UsbControl = () => {
-  const [devices, setDevices] = useState({
-    pending: [],
-    approved: [],
-    denied: [],
-    blocked: [],
-  });
-  const [activeTab, setActiveTab] = useState("pending");
+  const [usbData, setUsbData] = useState([]);
+  const [selectedUsb, setSelectedUsb] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const fetchDevices = async () => {
+  const fetchUsbData = async () => {
     setLoading(true);
     try {
-      const [pendingRes, approvedRes, deniedRes, blockedRes] = await Promise.all([
-        axios.get(`${API_BASE}/pending`),
-        axios.get(`${API_BASE}/approved`),
-        axios.get(`${API_BASE}/denied`),
-        axios.get(`${API_BASE}/blocked`),
-      ]);
-
-      setDevices({
-        pending: pendingRes.data || [],
-        approved: approvedRes.data || [],
-        denied: deniedRes.data || [],
-        blocked: blockedRes.data || [],
-      });
+      const res = await fetch(`${BACKEND_URL}/api/usb`);
+      const data = await res.json();
+      setUsbData(data);
     } catch (err) {
-      console.error("Fetch error:", err);
+      console.error("Failed to fetch USB data:", err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchDevices();
-    const interval = setInterval(fetchDevices, 10000);
-    return () => clearInterval(interval);
+    fetchUsbData();
   }, []);
 
-  const updateStatus = async (pnpid, action) => {
-    setLoading(true);
-    try {
-      const endpointMap = {
-        approve: "approve",
-        deny: "deny",
-        block: "block",
-        unblock: "unblock",
-      };
-      const endpoint = endpointMap[action];
-      if (!endpoint) return;
+  const getUniqueDevices = () => {
+    const map = new Map();
+    usbData.forEach((agent) => {
+      agent.data?.connected_devices?.forEach((device) => {
+        if (!map.has(device.serial_number)) {
+          map.set(device.serial_number, {
+            ...device,
+            users: [],
+          });
+        }
+        map.get(device.serial_number).users.push({
+          username: agent.agentId,
+          status: device.status,
+        });
+      });
+    });
+    return Array.from(map.values());
+  };
 
-      const res = await axios.post(`${API_BASE}/${endpoint}`, { pnpid });
-      console.log(res.data.message);
-      await fetchDevices();
+  const uniqueDevices = getUniqueDevices();
+
+  // Handle status change for a specific user and device
+  const handleStatusChange = async (username, serial, newStatus) => {
+    try {
+      await fetch(`${BACKEND_URL}/api/usb/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, serial, status: newStatus }),
+      });
+
+      // Update local state
+      setUsbData((prev) =>
+        prev.map((agent) =>
+          agent.agentId === username
+            ? {
+                ...agent,
+                data: {
+                  ...agent.data,
+                  connected_devices: agent.data.connected_devices.map((d) =>
+                    d.serial_number === serial ? { ...d, status: newStatus } : d
+                  ),
+                },
+              }
+            : agent
+        )
+      );
     } catch (err) {
-      console.error(`${action} failed:`, err);
-    } finally {
-      setLoading(false);
+      console.error("Failed to update status:", err);
     }
   };
 
-  const renderTable = (list, type) => (
+  if (loading) {
+    return (
+      <div className="usb-control-container dark">
+        <Sidebar />
+        <main className="usb-main">
+          <p className="loading">Loading...</p>
+        </main>
+      </div>
+    );
+  }
+
+  // Render USB device list
+  const renderDeviceList = () => (
     <div className="table-wrapper">
       <table className="usb-table">
         <thead>
           <tr>
-            <th>User</th>
-            <th>PNP ID</th>
-            <th>Model</th>
-            <th>Drive</th>
-            <th>Status</th>
-            <th>Actions</th>
+            <th>Name</th>
+            <th>Vendor</th>
+            <th>Serial</th>
+            <th>Last Seen</th>
+            <th>Users Count</th>
           </tr>
         </thead>
         <tbody>
-          {list.length === 0 ? (
-            <tr>
-              <td colSpan="6" className="no-data">
-                No {type} devices
-              </td>
+          {uniqueDevices.map((device) => (
+            <tr
+              key={device.serial_number}
+              onClick={() => setSelectedUsb(device.serial_number)}
+              className="clickable"
+            >
+              <td>{device.description}</td>
+              <td>{device.vendor_id}</td>
+              <td>{device.serial_number}</td>
+              <td>{new Date(device.last_seen).toLocaleString()}</td>
+              <td>{device.users.length}</td>
             </tr>
-          ) : (
-            list.map((device) => (
-              <tr key={device._id}>
-                <td>{device.username}</td>
-                <td className="tooltip-container">
-                  <span className="tooltip-text">{device.pnpid}</span>
-                  {device.pnpid?.length > 12
-                    ? `${device.pnpid.slice(0, 12)}...`
-                    : device.pnpid}
-                </td>
-                <td>{device.model}</td>
-                <td>{device.drive || "-"}</td>
-                <td>
-                  <span className={`status-tag ${device.status}`}>
-                    {device.status}
-                  </span>
-                </td>
-                <td>
-                  {type === "pending" && (
-                    <>
-                      <button
-                        className="action-btn approve"
-                        onClick={() => updateStatus(device.pnpid, "approve")}
-                        disabled={loading}
-                      >
-                        Approve
-                      </button>
-                      <button
-                        className="action-btn deny"
-                        onClick={() => updateStatus(device.pnpid, "deny")}
-                        disabled={loading}
-                      >
-                        Deny
-                      </button>
-                      <button
-                        className="action-btn block"
-                        onClick={() => updateStatus(device.pnpid, "block")}
-                        disabled={loading}
-                      >
-                        Block
-                      </button>
-                    </>
-                  )}
-
-                  {type === "approved" && (
-                    <button
-                      className="action-btn block"
-                      onClick={() => updateStatus(device.pnpid, "block")}
-                      disabled={loading}
-                    >
-                      Block
-                    </button>
-                  )}
-
-                  {type === "blocked" && (
-                    <button
-                      className="action-btn approve"
-                      onClick={() => updateStatus(device.pnpid, "unblock")}
-                      disabled={loading}
-                    >
-                      Unblock
-                    </button>
-                  )}
-
-                  {type === "denied" && (
-                    <button
-                      className="action-btn approve"
-                      onClick={() => updateStatus(device.pnpid, "approve")}
-                      disabled={loading}
-                    >
-                      Re-Approve
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))
-          )}
+          ))}
         </tbody>
       </table>
     </div>
   );
+
+  // Render user access for selected USB
+  const renderUserAccess = () => {
+    const device = uniqueDevices.find((d) => d.serial_number === selectedUsb);
+    if (!device) return null;
+
+    return (
+      <div className="usb-user-details">
+        <button className="back-btn" onClick={() => setSelectedUsb(null)}>
+          ← Back to USB List
+        </button>
+        <h2>Users with access to: {device.description}</h2>
+        <table className="usb-table">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Last Seen</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {device.users.map((user, idx) => {
+              const agentDevice = usbData
+                .find((a) => a.agentId === user.username)
+                ?.data?.connected_devices?.find((d) => d.serial_number === selectedUsb);
+
+              return (
+                <tr key={idx}>
+                  <td>{user.username}</td>
+                  <td>{agentDevice ? new Date(agentDevice.last_seen).toLocaleString() : "-"}</td>
+                  <td>
+                    <select
+  className={`status-select ${
+    user.status === "Allowed"
+      ? "allowed"
+      : user.status === "Blocked"
+      ? "blocked"
+      : "waiting"
+  }`}
+  value={user.status}
+  onChange={(e) =>
+    handleStatusChange(user.username, selectedUsb, e.target.value)
+  }
+>
+  <option value="Allowed">Allowed</option>
+  <option value="Blocked">Blocked</option>
+  <option value="WaitingForApproval">Waiting For Approval</option>
+</select>
+
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   return (
     <div className="usb-control-container dark">
@@ -174,29 +185,13 @@ const UsbControl = () => {
       <main className="usb-main">
         <header className="usb-header">
           <h1>USB Access Control</h1>
-          <p>Monitor and manage connected USB devices securely.</p>
+          <p>
+            {selectedUsb
+              ? "View users and update their access statuses."
+              : "Click a USB device to see users who have access."}
+          </p>
         </header>
-
-        <div className="tab-bar">
-          {["pending", "approved", "denied", "blocked"].map((tab) => (
-            <button
-              key={tab}
-              className={`tab-btn ${activeTab === tab ? "active" : ""}`}
-              onClick={() => setActiveTab(tab)}
-            >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}{" "}
-              <span className="count">{devices[tab]?.length || 0}</span>
-            </button>
-          ))}
-        </div>
-
-        <section className="tab-content">
-          {loading ? (
-            <p className="loading">Loading...</p>
-          ) : (
-            renderTable(devices[activeTab], activeTab)
-          )}
-        </section>
+        {selectedUsb ? renderUserAccess() : renderDeviceList()}
       </main>
     </div>
   );

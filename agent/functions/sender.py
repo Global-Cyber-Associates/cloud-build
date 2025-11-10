@@ -7,35 +7,28 @@ from dotenv import load_dotenv
 import socketio
 import time
 
-
-
-
 logging.basicConfig(level=logging.INFO)
 OUTPUT_FILE = "sent.json"
 UNSENT_FILE = "unsent.json"
 MAX_APPS = 200
 
-
 load_dotenv()
 SERVER_URL = os.getenv("SERVER_URL", "http://localhost:5000")
-
-
 AGENT_ID = os.getenv("AGENT_ID", platform.node())
 
-
-
-
 sio = socketio.Client(reconnection=True, reconnection_attempts=5, reconnection_delay=3)
+
 
 @sio.event
 def connect():
     logging.info(f"[🔌] Connected to backend Socket.IO at {SERVER_URL}")
-    
     resend_unsent_data()
+
 
 @sio.event
 def disconnect():
     logging.warning("[⚠️] Disconnected from backend server.")
+
 
 def connect_socket():
     try:
@@ -43,8 +36,6 @@ def connect_socket():
             sio.connect(SERVER_URL)
     except Exception as e:
         logging.error(f"[⚠️] Socket connection failed: {e}")
-
-
 
 
 def resend_unsent_data():
@@ -70,20 +61,16 @@ def resend_unsent_data():
         logging.info("[ℹ️] No unsent data to resend or still offline.")
 
 
-
-
-
 def send_data(data_type, payload):
     try:
-        
-        if data_type == "installed_apps" and isinstance(payload, dict):
-            apps = payload.get("apps", [])
-            if len(apps) > MAX_APPS:
-                logging.info(f"Installed apps count {len(apps)} exceeds limit {MAX_APPS}, truncating")
-                payload["apps"] = apps[:MAX_APPS]
-                payload["count"] = len(payload["apps"])
+        # Wrap USB devices in array if needed
+        if data_type == "usb_devices":
+            devices = payload.get("connected_devices")
+            if devices is None:
+                payload = {"connected_devices": [payload]}
+            else:
+                payload = {"connected_devices": devices}
 
-        
         entry = {
             "timestamp": datetime.now().isoformat(),
             "agentId": AGENT_ID,
@@ -91,7 +78,8 @@ def send_data(data_type, payload):
             "data": payload,
         }
 
-        
+        # Save locally
+        existing = []
         if os.path.exists(OUTPUT_FILE):
             try:
                 with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
@@ -100,8 +88,6 @@ def send_data(data_type, payload):
                     existing = []
             except json.JSONDecodeError:
                 existing = []
-        else:
-            existing = []
 
         existing.append(entry)
         with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
@@ -109,7 +95,7 @@ def send_data(data_type, payload):
 
         logging.info(f"[💾] Saved data ({data_type}) locally.")
 
-        
+        # Send via socket
         connect_socket()
         if sio.connected:
             sio.emit("agent_data", entry)
@@ -119,7 +105,7 @@ def send_data(data_type, payload):
 
     except Exception as e:
         logging.error(f"[❌] Failed to send {data_type}: {e}")
-        
+        # Save unsent data
         try:
             unsent = []
             if os.path.exists(UNSENT_FILE):

@@ -1,159 +1,51 @@
+// routes/usb.js
 import express from "express";
 import UsbDevice from "../models/UsbDevices.js";
 
 const router = express.Router();
 
 /* =======================================================
-   Create New USB Request
-======================================================= */
-router.post("/request", async (req, res) => {
-  try {
-    const { username, model, pnpid, drive } = req.body;
-    if (!username || !pnpid)
-      return res.status(400).json({ message: "username and pnpid required" });
-
-    const PNPID = String(pnpid).toUpperCase().trim();
-    const existing = await UsbDevice.findOne({ pnpid: PNPID });
-
-    if (existing) {
-      return res.status(200).json({
-        message: `Device already exists with status: ${existing.status}`,
-        device: existing,
-      });
-    }
-
-    const device = await UsbDevice.create({
-      username: username.trim(),
-      model: model?.trim() || "Unknown",
-      pnpid: PNPID,
-      drive: drive?.trim() || "",
-      status: "pending",
-    });
-
-    res.status(201).json({ message: "Request created", device });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-/* =======================================================
-   Approve Request
-======================================================= */
-router.post("/approve", async (req, res) => {
-  try {
-    const { pnpid } = req.body;
-    if (!pnpid) return res.status(400).json({ message: "pnpid required" });
-
-    const device = await UsbDevice.findOneAndUpdate(
-      { pnpid: String(pnpid).toUpperCase().trim() },
-      { status: "approved" },
-      { new: true }
-    );
-
-    if (!device) return res.status(404).json({ message: "Device not found" });
-    res.json({ message: "Device approved", device });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-/* =======================================================
-   Deny Request
-======================================================= */
-router.post("/deny", async (req, res) => {
-  try {
-    const { pnpid } = req.body;
-    if (!pnpid) return res.status(400).json({ message: "pnpid required" });
-
-    const device = await UsbDevice.findOneAndUpdate(
-      { pnpid: String(pnpid).toUpperCase().trim() },
-      { status: "denied" },
-      { new: true }
-    );
-
-    if (!device) return res.status(404).json({ message: "Device not found" });
-    res.json({ message: "Device denied", device });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-/* =======================================================
-   Block Device
-======================================================= */
-router.post("/block", async (req, res) => {
-  try {
-    const { pnpid } = req.body;
-    if (!pnpid) return res.status(400).json({ message: "pnpid required" });
-
-    const device = await UsbDevice.findOneAndUpdate(
-      { pnpid: String(pnpid).toUpperCase().trim() },
-      { status: "blocked" },
-      { new: true }
-    );
-
-    if (!device) return res.status(404).json({ message: "Device not found" });
-    res.json({ message: "Device blocked", device });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-/* =======================================================
-   Unblock Device → Moves Back to Pending
-======================================================= */
-router.post("/unblock", async (req, res) => {
-  try {
-    const { pnpid } = req.body;
-    if (!pnpid) return res.status(400).json({ message: "pnpid required" });
-
-    const device = await UsbDevice.findOneAndUpdate(
-      { pnpid: String(pnpid).toUpperCase().trim() },
-      { status: "pending" },
-      { new: true }
-    );
-
-    if (!device) return res.status(404).json({ message: "Device not found" });
-    res.json({ message: "Device unblocked (back to pending)", device });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-/* =======================================================
-   Fetch Lists by Status
-======================================================= */
-router.get("/:status", async (req, res) => {
-  try {
-    const validStatuses = ["pending", "approved", "denied", "blocked"];
-    const { status } = req.params;
-
-    if (!validStatuses.includes(status))
-      return res.status(400).json({ message: "Invalid status" });
-
-    const devices = await UsbDevice.find({ status }).sort({ updatedAt: -1 });
-    res.json(devices);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-/* =======================================================
-   Fetch All Devices
+   Fetch all USBDevices documents
 ======================================================= */
 router.get("/", async (_, res) => {
   try {
-    const devices = await UsbDevice.find().sort({ createdAt: -1 });
-    res.json(devices);
+    const devices = await UsbDevice.find(); // fetch all documents
+    res.json(devices); // return as JSON
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
+  }
+});
+
+/* =======================================================
+   Update a user's USB status
+   POST /api/usb/status
+   Body: { serial, username, status }
+======================================================= */
+router.post("/status", async (req, res) => {
+  const { serial, username, status } = req.body;
+
+  if (!serial || !username || !status) {
+    return res.status(400).json({ message: "Missing required fields" });
+  }
+
+  try {
+    // Find the agent
+    const agent = await UsbDevice.findOne({ agentId: username });
+    if (!agent) return res.status(404).json({ message: "User not found" });
+
+    // Find the device in this agent
+    const device = agent.data.connected_devices.find((d) => d.serial_number === serial);
+    if (!device) return res.status(404).json({ message: "Device not found" });
+
+    // Update status
+    device.status = status;
+    await agent.save();
+
+    res.json({ message: "Status updated successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 

@@ -19,7 +19,6 @@ const Dashboard = () => {
         fetchData("system_logs"),
       ]);
 
-      // Deduplicate visualizer by agentId to get latest scan per agent
       const latestVisualizer = Object.values(
         (vizRes.data || []).reduce((acc, d) => {
           if (
