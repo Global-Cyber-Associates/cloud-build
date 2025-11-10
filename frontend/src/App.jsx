@@ -10,7 +10,8 @@ import Features from "./components/Features/features.jsx";
 import Scan from "./components/scan/scan.jsx";
 import TaskManager from "./components/devices/Taskmanager/taskmanager.jsx";
 import UsbControl from "./components/usb/usb.jsx";
-import InstalledApps from "./components/devices/installedApps/installedapps.jsx"; 
+import InstalledApps from "./components/devices/installedApps/installedapps.jsx";
+import Login from "./components/login/login.jsx";
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/visualizer" element={<Visualizer />} />
+        <Route path="/login" element={<Login />} />
         <Route path="/devices" element={<Devices />} />
         <Route path="/devices/:id" element={<DeviceDetail />} />
         <Route path="/tasks/:id" element={<TaskManager />} />
