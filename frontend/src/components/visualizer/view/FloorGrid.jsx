@@ -28,6 +28,9 @@ export default function FloorGrid({ floor, updateDevices }) {
 
     init();
 
+    // 🔁 Auto-refresh every 5 seconds
+    const interval = setInterval(init, 5000);
+
     const handleUpdate = (deviceUpdate) => {
       setDevices((prev) => {
         const exists = prev.find((d) => d.id === deviceUpdate.id || d.ip === deviceUpdate.ip);
@@ -42,28 +45,31 @@ export default function FloorGrid({ floor, updateDevices }) {
     };
 
     socket.on("visualizer_update", handleUpdate);
-    return () => socket.off("visualizer_update", handleUpdate);
+
+    return () => {
+      socket.off("visualizer_update", handleUpdate);
+      clearInterval(interval); // 🧹 Clear interval on unmount
+    };
   }, [cols]);
 
   // ✅ Improved router detection logic
- const isRouterDevice = (ip) => {
-  if (!ip) return false;
-  return (
-    ip.endsWith(".0.1") ||
-    ip.endsWith(".1.1") ||
-    ip.endsWith(".254") ||
-    ip.endsWith(".1.254") ||
-    ip.endsWith(".0.254") ||
-    ip.endsWith(".43.1") ||    // Android standard
-    ip.endsWith(".137.1") ||   // Windows hotspot
-    ip.endsWith(".2.1") ||     // macOS Internet Sharing
-    ip.endsWith(".10.1") ||    // iPhone hotspot
-    ip.endsWith(".248.1") ||   // Some Android hotspots (Jio, Airtel, etc.)
-    ip.endsWith(".225.1") ||   // Reliance Jio pattern
-    ip.endsWith(".42.129")     // Some MediaTek phones
-  );
-};
-
+  const isRouterDevice = (ip) => {
+    if (!ip) return false;
+    return (
+      ip.endsWith(".0.1") ||
+      ip.endsWith(".1.1") ||
+      ip.endsWith(".254") ||
+      ip.endsWith(".1.254") ||
+      ip.endsWith(".0.254") ||
+      ip.endsWith(".43.1") || // Android standard
+      ip.endsWith(".137.1") || // Windows hotspot
+      ip.endsWith(".2.1") || // macOS Internet Sharing
+      ip.endsWith(".10.1") || // iPhone hotspot
+      ip.endsWith(".248.1") || // Some Android hotspots
+      ip.endsWith(".225.1") || // Reliance Jio pattern
+      ip.endsWith(".42.129") // Some MediaTek phones
+    );
+  };
 
   const formatDevices = (data, colCount) => {
     return data.map((d, i) => {

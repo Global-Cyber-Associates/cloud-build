@@ -53,7 +53,6 @@ const Dashboard = () => {
         ]);
         const vizData = Array.isArray(vizRaw) ? vizRaw : [];
 
-        // group latest per IP
         const latestVisualizer = Object.values(
           vizData.reduce((acc, d) => {
             const ip = d.ip;
@@ -113,11 +112,9 @@ const Dashboard = () => {
     if (!d.ip) return false;
     const lastOctet = Number(d.ip.split(".")[3]);
 
-    // No agents → classify directly
     if (ROUTER_IP_ENDINGS.includes(lastOctet) && agentIPs.length === 0)
       return true;
 
-    // With agents → check same subnet
     if (ROUTER_IP_ENDINGS.includes(lastOctet) && agentIPs.length > 0) {
       const subnet = d.ip.split(".").slice(0, 3).join(".");
       const agentSubnetMatch = agentIPs.some(
@@ -129,12 +126,10 @@ const Dashboard = () => {
     return false;
   });
 
-  // ✅ Unknown = unmanaged but not routers
   const unknownDevices = unmanagedDevices.filter(
     (d) => !routers.some((r) => r.ip === d.ip)
   );
 
-  // ✅ All Devices = every visualized device except routers
   const allDevices = visualizerData.filter(
     (d) => !routers.some((r) => r.ip === d.ip)
   );
@@ -196,7 +191,7 @@ const Dashboard = () => {
                 <thead>
                   <tr>
                     <th>IP</th>
-                    <th>MAC</th>
+                    {/* <th>MAC</th> */}
                     <th>Hostname</th>
                     <th>Agent Installed</th>
                     <th>Detected At</th>
@@ -206,7 +201,7 @@ const Dashboard = () => {
                   {allDevices.map((d) => (
                     <tr key={d._id || d.ip}>
                       <td>{d.ip}</td>
-                      <td>{d.mac || "-"}</td>
+                      {/* <td>{d.mac || "-"}</td> */}
                       <td>{d.hostname || "-"}</td>
                       <td>{d.noAgent ? "No" : "Yes"}</td>
                       <td>
@@ -271,7 +266,7 @@ const Dashboard = () => {
                 <thead>
                   <tr>
                     <th>IP</th>
-                    <th>MAC</th>
+                    {/* <th>MAC</th> */}
                     <th>Detected At</th>
                   </tr>
                 </thead>
@@ -283,7 +278,7 @@ const Dashboard = () => {
                     return (
                       <tr key={d._id?.$oid || d._id || d.ip}>
                         <td>{d.ip}</td>
-                        <td>{d.mac || "-"}</td>
+                        {/* <td>{d.mac || "-"}</td> */}
                         <td>{created ? created.toLocaleString() : "-"}</td>
                       </tr>
                     );
@@ -299,7 +294,7 @@ const Dashboard = () => {
                 <thead>
                   <tr>
                     <th>IP</th>
-                    <th>MAC</th>
+                    {/* <th>MAC</th> */}
                     <th>Detected At</th>
                   </tr>
                 </thead>
@@ -311,7 +306,7 @@ const Dashboard = () => {
                     return (
                       <tr key={r._id?.$oid || r._id || r.ip}>
                         <td>{r.ip}</td>
-                        <td>{r.mac || "-"}</td>
+                        {/* <td>{r.mac || "-"}</td> */}
                         <td>{created ? created.toLocaleString() : "-"}</td>
                       </tr>
                     );
