@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node dist/server.js",
-"build": "esbuild server.js --bundle --platform=node --target=node18 --format=esm --packages=external --outfile=dist/server.js --minify && copy config.json dist\\config.json && copy scanner_service.py dist\\scanner_service.py"
+    "build": "rmdir /s /q dist && mkdir dist && esbuild server.js --bundle --platform=node --target=node18 --format=esm --outfile=dist/server.js --minify && copy package.json dist\\package.json && copy config.json dist\\config.json && copy visualizer-script\\scanner_service.py dist\\ && xcopy scanner\\*.py dist\\ /Y"
   },
 
 

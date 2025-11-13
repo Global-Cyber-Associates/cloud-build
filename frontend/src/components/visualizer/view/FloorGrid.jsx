@@ -58,7 +58,7 @@ export default function FloorGrid({ floor, updateDevices }) {
       const isRouter = ip.endsWith(".0.1") || ip.endsWith(".1.1");
       return {
         id: d._id || d.id,
-        name: d.hostname || "Unknown",
+        name: d.agentId || "Unknown",
         ip,
         mac: d.mac || "Unknown",
         noAgent: d.noAgent,
