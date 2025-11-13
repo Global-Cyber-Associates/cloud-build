@@ -28,24 +28,21 @@ export async function runVisualizerUpdate() {
   try {
     await connectDB();
 
-    // 1️⃣ Fetch all scan results (latest first)
     const allScans = await ScanResult.find({}).sort({ createdAt: -1 });
     if (!allScans.length) {
       console.log("⚠️ No scan results found.");
       return;
     }
 
-    // 2️⃣ Fetch system info and build mappings
     const systems = await SystemInfo.find();
     const ipToHostname = new Map();
     const ipToAgentId = new Map();
     const systemIPs = new Set();
 
     systems.forEach((sys) => {
-      // Handle both new and old structures safely
       const wlanData = sys.data?.wlan_info || sys.wlan_ip || [];
       const hostname = sys.data?.hostname || sys.hostname || "Unknown";
-      const agentId = sys.data?.agent_id || sys.agentId || "unknown";
+      const agentId = sys?.agent_id || sys.agentId || "unknown";
 
       wlanData.forEach((iface) => {
         const ip = (iface.address || "").trim();
@@ -57,7 +54,6 @@ export async function runVisualizerUpdate() {
       });
     });
 
-    // 3️⃣ Filter only alive devices
     const aliveDevices = allScans.filter(
       (dev) =>
         dev.isAlive === true ||
@@ -71,7 +67,6 @@ export async function runVisualizerUpdate() {
       return;
     }
 
-    // 4️⃣ Map alive devices to visualizer format
     const finalDevices = aliveDevices.map((dev) => {
       const ip = (dev.ips?.[0] || "N/A").trim();
       const hasAgent = systemIPs.has(ip);
@@ -89,7 +84,6 @@ export async function runVisualizerUpdate() {
       };
     });
 
-    // 5️⃣ Replace visualizer data with alive ones only
     await VisualizerData.deleteMany({});
     await VisualizerData.insertMany(finalDevices);
 

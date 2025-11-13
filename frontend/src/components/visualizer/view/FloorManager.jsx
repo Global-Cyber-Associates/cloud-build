@@ -3,7 +3,7 @@ import React from "react";
 export default function FloorManager({ floors, activeFloor, onAdd, onSwitch }) {
   return (
     <div className="floor-manager">
-      {floors.map((f) => (
+      {/* {floors.map((f) => (
         <button
           key={f.id}
           className={`floor-tab ${activeFloor === f.id ? "active" : ""}`}
@@ -14,7 +14,7 @@ export default function FloorManager({ floors, activeFloor, onAdd, onSwitch }) {
       ))}
       <button className="add-floor-btn" onClick={onAdd}>
         ➕ Add Floor
-      </button>
+      </button> */}
     </div>
   );
 }

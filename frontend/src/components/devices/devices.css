@@ -106,6 +106,18 @@
   transform: scale(1.05);
 }
 
+:disabled{
+  background: #7f8c8d;
+  color: #ecf0f1;
+  cursor: not-allowed;
+  transform: none;
+}
+
+:disabled:hover {
+  background: #7f8c8d;
+  transform: none;
+}
+
 /* ====== Loading/Error ====== */
 .devices-container > div {
   font-size: 1.2rem;

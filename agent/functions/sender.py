@@ -1,4 +1,3 @@
-import json
 import os
 import logging
 import platform
@@ -6,29 +5,26 @@ from datetime import datetime
 from dotenv import load_dotenv
 import socketio
 import time
+import threading
+from queue import Queue
 
 logging.basicConfig(level=logging.INFO)
-OUTPUT_FILE = "sent.json"
-UNSENT_FILE = "unsent.json"
-MAX_APPS = 200
 
 load_dotenv()
-SERVER_URL = os.getenv("SERVER_URL", "http://localhost:5000")
+SERVER_URL = os.getenv("SERVER_URL")
 AGENT_ID = os.getenv("AGENT_ID", platform.node())
 
 sio = socketio.Client(reconnection=True, reconnection_attempts=5, reconnection_delay=3)
-
+send_queue = Queue()  # In-memory queue for unsent data
 
 @sio.event
 def connect():
     logging.info(f"[🔌] Connected to backend Socket.IO at {SERVER_URL}")
-    resend_unsent_data()
-
+    flush_queue()
 
 @sio.event
 def disconnect():
     logging.warning("[⚠️] Disconnected from backend server.")
-
 
 def connect_socket():
     try:
@@ -37,29 +33,17 @@ def connect_socket():
     except Exception as e:
         logging.error(f"[⚠️] Socket connection failed: {e}")
 
-
-def resend_unsent_data():
-    if not os.path.exists(UNSENT_FILE):
-        return
-
-    try:
-        with open(UNSENT_FILE, "r", encoding="utf-8") as f:
-            unsent = json.load(f)
-        if not isinstance(unsent, list):
-            unsent = []
-    except Exception:
-        unsent = []
-
-    if unsent and sio.connected:
-        logging.info(f"[📤] Resending {len(unsent)} unsent entries...")
-        for entry in unsent:
+def flush_queue():
+    """Send everything in the queue when socket is connected."""
+    while not send_queue.empty() and sio.connected:
+        entry = send_queue.get()
+        try:
             sio.emit("agent_data", entry)
-            time.sleep(0.5)
-        os.remove(UNSENT_FILE)
-        logging.info("[✅] All unsent entries delivered.")
-    else:
-        logging.info("[ℹ️] No unsent data to resend or still offline.")
-
+            logging.info(f"[📡] Sent queued data: {entry['type']}")
+        except Exception as e:
+            logging.error(f"[❌] Failed to send queued data: {e}")
+            send_queue.put(entry)  # Requeue if failed
+            break  # Stop and retry later
 
 def send_data(data_type, payload):
     try:
@@ -78,44 +62,25 @@ def send_data(data_type, payload):
             "data": payload,
         }
 
-        # Save locally
-        existing = []
-        if os.path.exists(OUTPUT_FILE):
-            try:
-                with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
-                    existing = json.load(f)
-                if not isinstance(existing, list):
-                    existing = []
-            except json.JSONDecodeError:
-                existing = []
-
-        existing.append(entry)
-        with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-            json.dump(existing, f, indent=4)
-
-        logging.info(f"[💾] Saved data ({data_type}) locally.")
-
-        # Send via socket
-        connect_socket()
+        send_queue.put(entry)  # Always queue the data
         if sio.connected:
-            sio.emit("agent_data", entry)
-            logging.info(f"[📡] Sent {data_type} to backend.")
+            flush_queue()  # Try sending immediately
         else:
-            raise ConnectionError("Socket not connected")
+            logging.info(f"[ℹ️] Socket not connected. Queued data: {data_type}")
 
     except Exception as e:
-        logging.error(f"[❌] Failed to send {data_type}: {e}")
-        # Save unsent data
-        try:
-            unsent = []
-            if os.path.exists(UNSENT_FILE):
-                with open(UNSENT_FILE, "r", encoding="utf-8") as f:
-                    unsent = json.load(f)
-                    if not isinstance(unsent, list):
-                        unsent = []
-            unsent.append(entry)
-            with open(UNSENT_FILE, "w", encoding="utf-8") as f:
-                json.dump(unsent, f, indent=4)
-            logging.info(f"[💾] Cached unsent data ({data_type}) for retry.")
-        except Exception as cache_err:
-            logging.error(f"[❌] Failed to cache unsent data: {cache_err}")
+        logging.error(f"[❌] Failed to enqueue {data_type}: {e}")
+
+def start_queue_worker():
+    """Background thread to retry sending data every few seconds."""
+    def worker():
+        while True:
+            if sio.connected:
+                flush_queue()
+            time.sleep(2)  # Retry interval
+
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+
+start_queue_worker()
+connect_socket()

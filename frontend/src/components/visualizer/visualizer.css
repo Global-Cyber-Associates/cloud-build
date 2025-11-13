@@ -1,7 +1,7 @@
 .visualizer-page {
   display: flex;
   height: 100vh;
-  color: #1e1e2f;
+  color: #686897;
   overflow: hidden;
 }
 
@@ -20,7 +20,7 @@
   align-items: center;
   border-radius: 3px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  color: white;
+  color: #a8dadc;
 }
 
 .floor-manager {
@@ -67,7 +67,7 @@
   flex: 1;
   position: relative;
   margin-top: 10px;
-  background: #fafcff;
+  background: #0e2d5c;
   border-radius: 12px;
   box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.05);
   overflow: hidden;
@@ -78,7 +78,7 @@
   align-items: center;
   gap: 10px;
   padding: 10px;
-  background: #ffffff;
+  background: #9c1010;
   border-bottom: 1px solid #e5e7eb;
 }
 

@@ -16,9 +16,6 @@ build
 
 # Local env files
 *.local
-.env
-.env.*.local
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

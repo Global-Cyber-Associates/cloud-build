@@ -21,7 +21,6 @@
 .sidebar.closed {
   width: 0;
   padding: 0;
-   ;
   border-right: none;
 }
 
@@ -107,6 +106,26 @@
 }
 .sidebar::-webkit-scrollbar-thumb:hover {
   background: #0077b6;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  padding: 1rem;
+  gap: 0.5rem;
+  margin-top: 20px;
+}
+
+.sidebar-logo {
+  width: 40px; /* adjust as needed */
+  height: 40px;
+  object-fit: contain;
+}
+
+.company-name {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #fff; /* adjust to your sidebar text color */
 }
 
 /* ===== Responsive ===== */

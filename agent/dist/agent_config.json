@@ -1,9 +1,0 @@
-{
-  "api_url": "http://localhost:5000/api",
-  "port_target": "127.0.0.1",
-  "port_range": "1-1024",
-  "do_port_scan": true,
-  "do_system_info": true,
-  "do_task_manager": true,
-  "do_installed_apps": true
-}

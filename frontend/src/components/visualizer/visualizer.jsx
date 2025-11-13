@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import Sidebar from "../navigation/sidenav.jsx";
 import FloorManager from "./view/FloorManager.jsx";
 import FloorGrid from "./view/FloorGrid.jsx";
-import socket, { fetchData } from "../../utils/socket.js"; // <-- import socket
+import socket, { fetchData } from "../../utils/socket.js";
 import "./visualizer.css";
 
 export default function Visualizer() {
@@ -20,7 +20,7 @@ export default function Visualizer() {
 
         const fetchedDevices = res.data.map((d, i) => ({
           id: i + 1,
-          name: d.hostname || "Unknown",
+          name: d.agentId || "Unknown", // ✅ always use agentId
           ip: d.ip || "N/A",
           mac: d.mac || "Unknown",
           noAgent: d.noAgent,
@@ -34,7 +34,7 @@ export default function Visualizer() {
       .catch((err) => console.error("❌ Failed to fetch devices:", err))
       .finally(() => setLoading(false));
 
-    // Optional: listen for real-time updates
+    // ✅ Fix for socket update overwriting agentId
     socket.on("visualizer_update", (deviceUpdate) => {
       setFloors((prev) =>
         prev.map((f) =>
@@ -42,7 +42,13 @@ export default function Visualizer() {
             ? {
                 ...f,
                 devices: f.devices.map((d) =>
-                  d.ip === deviceUpdate.ip ? { ...d, ...deviceUpdate } : d
+                  d.ip === deviceUpdate.ip
+                    ? {
+                        ...d,
+                        ...deviceUpdate,
+                        name: deviceUpdate.agentId || d.agentId || "Unknown", // 🔥 force agentId display
+                      }
+                    : d
                 ),
               }
             : f
@@ -72,7 +78,7 @@ export default function Visualizer() {
       <Sidebar />
       <div className="visualizer-wrap">
         <div className="visualizer-header">
-          <h1>Network Floor Visualizer</h1>
+          <h1>Network Visualizer</h1>
           <FloorManager
             floors={floors}
             activeFloor={activeFloor}

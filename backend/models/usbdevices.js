@@ -5,10 +5,10 @@ const UsbDeviceSchema = new mongoose.Schema({
   data: {
     connected_devices: [
       {
-        drive_letter: { type: String, default: "" },
-        vendor_id: { type: String, default: "" },
-        product_id: { type: String, default: "" },
-        description: { type: String, default: "" },
+        drive_letter: String,
+        vendor_id: String,
+        product_id: String,
+        description: String,
         serial_number: { type: String, required: true },
         status: { type: String, enum: ["Allowed", "Blocked", "WaitingForApproval"], default: "WaitingForApproval" },
         last_seen: { type: Date, default: Date.now },
@@ -17,4 +17,5 @@ const UsbDeviceSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
-export default mongoose.model("USBDevices", UsbDeviceSchema);
+// ✅ Prevent duplicate model registration
+export default mongoose.models.UsbDevice || mongoose.model("UsbDevice", UsbDeviceSchema);

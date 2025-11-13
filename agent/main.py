@@ -84,4 +84,4 @@ if __name__ == "__main__":
     while True:
         run_scans()
         print("[⏳] Waiting 60 seconds before next scan...\n")
-        time.sleep(60)
+        time.sleep(5)

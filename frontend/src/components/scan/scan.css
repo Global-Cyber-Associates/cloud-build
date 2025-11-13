@@ -5,14 +5,14 @@ body {
   color: white;
 }
 
-/* overall page layout */
+/* Overall page layout */
 .scan-page {
   display: flex;
   min-height: 100vh;
   background-color: #0f172a;
 }
 
-/* main scan content */
+/* Main scan content */
 .scan-content {
   flex: 1;
   padding: 40px 60px;
@@ -26,9 +26,10 @@ body {
   transition: all 0.3s ease;
 }
 
-/* heading + button */
+/* Headings + Buttons */
 .scan-content h2 {
   margin-bottom: 10px;
+  color: #111827;
 }
 
 .description {
@@ -56,57 +57,137 @@ body {
   cursor: not-allowed;
 }
 
-/* error + table */
+/* Error Message */
 .error {
   color: red;
   margin-top: 10px;
 }
 
-.scan-table {
+/* ====== SCAN OUTPUT TABLE ====== */
+.scan-output-table {
   width: 100%;
-  border-collapse: collapse;
-  margin-top: 20px;
+  margin-top: 25px;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(187, 187, 187, 0.15);
+  background-color: white;
 }
 
-.scan-table th,
-.scan-table td {
-  border: 1px solid #ddd;
-  padding: 10px;
+.scan-output-table h3 {
+  margin-bottom: 10px;
+  color: #a7a7a7;
+}
+
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.styled-scan-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: white;
+  color: #111827;
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 14px;
+}
+
+.styled-scan-table th {
+  background-color: #4338ca;
+  color: white;
+  font-weight: 600;
+  padding: 12px 10px;
   text-align: left;
 }
 
-.scan-table th {
-  background-color: #f3f4f6;
-  color: #111827;
-}
-
-.scan-table td {
+.styled-scan-table td {
   background-color: #ffffff;
+  color: #1f2937;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 10px;
+  vertical-align: top;
 }
 
-.scan-content {
+.styled-scan-table tr:nth-child(even) td {
+  background-color: #f9fafb;
+}
+
+.styled-scan-table tr:hover td {
+  background-color: #eef2ff;
+}
+
+/* IP + Vendor + Tags */
+.ip-badge {
+  display: inline-block;
+  background-color: #e0e7ff;
+  color: #3730a3;
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin: 2px;
+  font-size: 12px;
+}
+
+.vendor-known {
+  color: #065f46;
+  font-weight: 600;
+}
+
+.vendor-unknown {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.mobile-tag {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.mobile-tag.yes {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.mobile-tag.no {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+/* Ports + Vulnerabilities */
+.ports-cell {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 20px;
-  position: relative;
-  z-index: 1;
+  gap: 2px;
 }
 
-.scan-output-table {
-  width: 100%;
-  margin-top: 20px;
-  position: relative;
-  z-index: 0;
+.port-item {
+  background-color: #f3f4f6;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  color: #1e3a8a;
 }
 
-button {
-  position: relative;
-  z-index: 2;
+.vuln-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
 }
 
-/* ========== WAVE LOADER ========== */
-/* From Uiverse.io by JkHuger */
+.vuln-list li {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border-left: 3px solid #dc2626;
+  padding: 3px 6px;
+  border-radius: 4px;
+  margin-bottom: 3px;
+  font-size: 13px;
+}
+
+/* Loader Animation */
 .wave-menu {
   border: 4px solid #545FE5;
   border-radius: 50px;
@@ -117,9 +198,6 @@ button {
   align-items: center;
   padding: 0;
   margin: 20px 0;
-  cursor: pointer;
-  transition: ease 0.2s;
-  position: relative;
   background: #fff;
 }
 
@@ -135,62 +213,9 @@ button {
   animation-duration: 0.3s;
   animation-iteration-count: infinite;
   animation-direction: alternate;
-  transition: ease 0.2s;
-}
-
-.wave-menu li:nth-child(2) {
-  animation-name: wave2;
-  animation-delay: 0.2s;
-}
-
-.wave-menu li:nth-child(3) {
-  animation-name: wave3;
-  animation-delay: 0.23s;
-  animation-duration: 0.4s;
-}
-
-.wave-menu li:nth-child(4) {
-  animation-name: wave4;
-  animation-delay: 0.1s;
-  animation-duration: 0.3s;
-}
-
-.wave-menu li:nth-child(5) {
-  animation-delay: 0.5s;
-}
-
-.wave-menu li:nth-child(6) {
-  animation-name: wave2;
-  animation-duration: 0.5s;
-}
-
-.wave-menu li:nth-child(8) {
-  animation-name: wave4;
-  animation-delay: 0.4s;
-  animation-duration: 0.25s;
-}
-
-.wave-menu li:nth-child(9) {
-  animation-name: wave3;
-  animation-delay: 0.15s;
 }
 
 @keyframes wave1 {
   from { transform: scaleY(1); }
-  to { transform: scaleY(0.5); }
-}
-
-@keyframes wave2 {
-  from { transform: scaleY(0.3); }
-  to { transform: scaleY(0.6); }
-}
-
-@keyframes wave3 {
-  from { transform: scaleY(0.6); }
-  to { transform: scaleY(0.8); }
-}
-
-@keyframes wave4 {
-  from { transform: scaleY(0.2); }
   to { transform: scaleY(0.5); }
 }
