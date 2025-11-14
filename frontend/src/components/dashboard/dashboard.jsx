@@ -2,10 +2,12 @@ import React, { useEffect, useState } from "react";
 import "./dashboard.css";
 import Sidebar from "../navigation/sidenav.jsx";
 
+// ✅ Correct env var
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+
 const Dashboard = () => {
   const [visualizerData, setVisualizerData] = useState([]);
   const [systemInfo, setSystemInfo] = useState([]);
-  // const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
 
   const parseDate = (v) => {
@@ -34,15 +36,18 @@ const Dashboard = () => {
     return Array.from(new Set(ipCandidates));
   };
 
+  // ===================================================================
+  //                        FETCH LOOP
+  // ===================================================================
   useEffect(() => {
     let mounted = true;
 
     const fetchData = async () => {
       try {
-        // setLoading(true);
+        // ❗ FIXED — Correct env variable usage
         const [vizRes, sysRes] = await Promise.all([
-          fetch("http://localhost:5000/api/visualizer-data"),
-          fetch("http://localhost:5000/api/system"),
+          fetch(`${BACKEND_URL}/api/visualizer-data`),
+          fetch(`${BACKEND_URL}/api/system`),
         ]);
 
         if (!vizRes.ok || !sysRes.ok) throw new Error("Failed to fetch data");
@@ -51,6 +56,7 @@ const Dashboard = () => {
           vizRes.json(),
           sysRes.json(),
         ]);
+
         const vizData = Array.isArray(vizRaw) ? vizRaw : [];
 
         const latestVisualizer = Object.values(
@@ -74,24 +80,27 @@ const Dashboard = () => {
         const systemArr = Array.isArray(sysRaw) ? sysRaw : [];
 
         if (!mounted) return;
+
         setVisualizerData(latestVisualizer);
         setSystemInfo(systemArr);
         setLastUpdated(new Date());
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
-      } finally {
-        // if (mounted) setLoading(false);
       }
     };
 
     fetchData();
     const interval = setInterval(fetchData, 1000);
+
     return () => {
       mounted = false;
       clearInterval(interval);
     };
   }, []);
 
+  // ===================================================================
+  //                        DEVICE PROCESSING
+  // ===================================================================
   const agentIPs = Array.from(new Set(systemInfo.flatMap((s) => getAgentIPs(s))));
 
   const activeAgents = visualizerData.filter(
@@ -106,8 +115,8 @@ const Dashboard = () => {
 
   const unmanagedDevices = visualizerData.filter((d) => d.noAgent === true);
 
-  // ✅ Router detection — includes .1, .2, .250, .253, .254
   const ROUTER_IP_ENDINGS = [1, 250, 253, 254];
+
   const routers = unmanagedDevices.filter((d) => {
     if (!d.ip) return false;
     const lastOctet = Number(d.ip.split(".")[3]);
@@ -122,7 +131,6 @@ const Dashboard = () => {
       );
       return agentSubnetMatch;
     }
-
     return false;
   });
 
@@ -137,6 +145,9 @@ const Dashboard = () => {
   const findSystemByIp = (ip) =>
     systemInfo.find((s) => getAgentIPs(s).includes(ip));
 
+  // ===================================================================
+  //                        RENDER
+  // ===================================================================
   return (
     <div className="dashboard">
       <Sidebar />
@@ -156,164 +167,156 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {  (
-          <>
-            {/* KPI Summary */}
-            <div className="stats-grid">
-              <div className="stat-card gray">
-                <h2>All Devices</h2>
-                <p>{allDevices.length}</p>
-              </div>
-              <div className="stat-card green">
-                <h2>Active Agent Devices</h2>
-                <p>{activeAgents.length}</p>
-              </div>
-              <div className="stat-card red">
-                <h2>Inactive Agent Devices</h2>
-                <p>{inactiveAgents.length}</p>
-              </div>
-              <div className="stat-card orange">
-                <h2>Unknown Devices</h2>
-                <p>{unknownDevices.length}</p>
-              </div>
-              <div className="stat-card blue">
-                <h2>Routers</h2>
-                <p>{routers.length}</p>
-              </div>
+        <>
+          {/* KPI Summary */}
+          <div className="stats-grid">
+            <div className="stat-card gray">
+              <h2>All Devices</h2>
+              <p>{allDevices.length}</p>
             </div>
+            <div className="stat-card green">
+              <h2>Active Agent Devices</h2>
+              <p>{activeAgents.length}</p>
+            </div>
+            <div className="stat-card red">
+              <h2>Inactive Agent Devices</h2>
+              <p>{inactiveAgents.length}</p>
+            </div>
+            <div className="stat-card orange">
+              <h2>Unknown Devices</h2>
+              <p>{unknownDevices.length}</p>
+            </div>
+            <div className="stat-card blue">
+              <h2>Routers</h2>
+              <p>{routers.length}</p>
+            </div>
+          </div>
 
-            {/* All Devices Table */}
-            <div className="table-container">
-              <h2>All Devices (Excluding Routers)</h2>
-              <table className="activity-table">
-                <thead>
-                  <tr>
-                    <th>IP</th>
-                    {/* <th>MAC</th> */}
-                    <th>Hostname</th>
-                    <th>Agent Installed</th>
-                    <th>Detected At</th>
+          {/* All Devices Table */}
+          <div className="table-container">
+            <h2>All Devices (Excluding Routers)</h2>
+            <table className="activity-table">
+              <thead>
+                <tr>
+                  <th>IP</th>
+                  <th>Hostname</th>
+                  <th>Agent Installed</th>
+                  <th>Detected At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allDevices.map((d) => (
+                  <tr key={d._id || d.ip}>
+                    <td>{d.ip}</td>
+                    <td>{d.hostname || "-"}</td>
+                    <td>{d.noAgent ? "No" : "Yes"}</td>
+                    <td>
+                      {parseDate(d.createdAt || d.timestamp)?.toLocaleString() ||
+                        "-"}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {allDevices.map((d) => (
-                    <tr key={d._id || d.ip}>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Active Agent Table */}
+          <div className="table-container">
+            <h2>Active Agent Devices</h2>
+            <table className="activity-table">
+              <thead>
+                <tr>
+                  <th>Agent ID</th>
+                  <th>Hostname</th>
+                  <th>IP</th>
+                  <th>CPU Cores</th>
+                  <th>RAM Usage</th>
+                  <th>OS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeAgents.map((d) => {
+                  const sys = findSystemByIp(d.ip);
+                  const sdata = sys?.data || sys || {};
+                  return (
+                    <tr key={d.ip}>
+                      <td>{sys?.agentId || "-"}</td>
+                      <td>{sdata.hostname || "-"}</td>
                       <td>{d.ip}</td>
-                      {/* <td>{d.mac || "-"}</td> */}
-                      <td>{d.hostname || "-"}</td>
-                      <td>{d.noAgent ? "No" : "Yes"}</td>
                       <td>
-                        {parseDate(d.createdAt || d.timestamp)?.toLocaleString() ||
+                        {sdata.cpu?.logical_cores ??
+                          sdata.cpu?.physical_cores ??
                           "-"}
                       </td>
+                      <td>
+                        {typeof sdata.memory?.ram_percent === "number"
+                          ? `${sdata.memory.ram_percent}%`
+                          : "-"}
+                      </td>
+                      <td>
+                        {(sdata.os_type || "-") +
+                          " " +
+                          (sdata.os_release || "")}
+                      </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-            {/* Active Agent Table */}
-            <div className="table-container">
-              <h2>Active Agent Devices</h2>
-              <table className="activity-table">
-                <thead>
-                  <tr>
-                    <th>Agent ID</th>
-                    <th>Hostname</th>
-                    <th>IP</th>
-                    <th>CPU Cores</th>
-                    <th>RAM Usage</th>
-                    <th>OS</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeAgents.map((d) => {
-                    const sys = findSystemByIp(d.ip);
-                    const sdata = sys?.data || sys || {};
-                    return (
-                      <tr key={d.ip}>
-                        <td>{sys?.agentId || "-"}</td>
-                        <td>{sdata.hostname || "-"}</td>
-                        <td>{d.ip}</td>
-                        <td>
-                          {sdata.cpu?.logical_cores ??
-                            sdata.cpu?.physical_cores ??
-                            "-"}
-                        </td>
-                        <td>
-                          {typeof sdata.memory?.ram_percent === "number"
-                            ? `${sdata.memory.ram_percent}%`
-                            : "-"}
-                        </td>
-                        <td>
-                          {(sdata.os_type || "-") +
-                            " " +
-                            (sdata.os_release || "")}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+          {/* Unknown Devices */}
+          <div className="table-container">
+            <h2>Unknown Devices</h2>
+            <table className="activity-table">
+              <thead>
+                <tr>
+                  <th>IP</th>
+                  <th>Detected At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unknownDevices.map((d) => {
+                  const created = parseDate(
+                    d.createdAt || d.created_at || d.timestamp
+                  );
+                  return (
+                    <tr key={d._id?.$oid || d._id || d.ip}>
+                      <td>{d.ip}</td>
+                      <td>{created ? created.toLocaleString() : "-"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-            {/* Unknown Devices Table */}
-            <div className="table-container">
-              <h2>Unknown Devices</h2>
-              <table className="activity-table">
-                <thead>
-                  <tr>
-                    <th>IP</th>
-                    {/* <th>MAC</th> */}
-                    <th>Detected At</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {unknownDevices.map((d) => {
-                    const created = parseDate(
-                      d.createdAt || d.created_at || d.timestamp
-                    );
-                    return (
-                      <tr key={d._id?.$oid || d._id || d.ip}>
-                        <td>{d.ip}</td>
-                        {/* <td>{d.mac || "-"}</td> */}
-                        <td>{created ? created.toLocaleString() : "-"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Routers Table */}
-            <div className="table-container">
-              <h2>Routers</h2>
-              <table className="activity-table">
-                <thead>
-                  <tr>
-                    <th>IP</th>
-                    {/* <th>MAC</th> */}
-                    <th>Detected At</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {routers.map((r) => {
-                    const created = parseDate(
-                      r.createdAt || r.created_at || r.timestamp
-                    );
-                    return (
-                      <tr key={r._id?.$oid || r._id || r.ip}>
-                        <td>{r.ip}</td>
-                        {/* <td>{r.mac || "-"}</td> */}
-                        <td>{created ? created.toLocaleString() : "-"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+          {/* Routers */}
+          <div className="table-container">
+            <h2>Routers</h2>
+            <table className="activity-table">
+              <thead>
+                <tr>
+                  <th>IP</th>
+                  <th>Detected At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {routers.map((r) => {
+                  const created = parseDate(
+                    r.createdAt || r.created_at || r.timestamp
+                  );
+                  return (
+                    <tr key={r._id?.$oid || r._id || r.ip}>
+                      <td>{r.ip}</td>
+                      <td>{created ? created.toLocaleString() : "-"} </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       </div>
     </div>
   );

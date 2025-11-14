@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import "./scan.css";
 import Sidebar from "../navigation/sidenav.jsx";
 
-const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000/";
+const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
 function guessVendorFromMac(mac) {
   if (!mac) return null;

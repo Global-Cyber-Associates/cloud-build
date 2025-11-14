@@ -3,7 +3,9 @@ import { io } from "socket.io-client";
 import "./logs.css";
 import Sidebar from "../navigation/sidenav.jsx";
 
-const SOCKET_URL = "http://localhost:5000";
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+
+const SOCKET_URL = `${BACKEND_URL}`;
 
 const Logs = () => {
   const [connected, setConnected] = useState(false);
