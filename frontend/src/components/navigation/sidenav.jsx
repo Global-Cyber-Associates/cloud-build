@@ -26,7 +26,6 @@ const Sidebar = ({ onToggle }) => {
   const adminNavItems = [
     { label: "Admin Dashboard", path: "/admin/dashboard" },
     { label: "Manage Users", path: "/admin/users" },
-    { label: "Create User", path: "/admin/create-user" },
   ];
 
   useEffect(() => {
