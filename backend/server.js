@@ -33,9 +33,7 @@ import LogsStatus from "./models/Log.js"; // ✅ Model for logs snapshot
 
 import "./visualizer-script/visualizerScanner.js";
 
-// Load config
-const configPath = path.resolve("./config.json");
-const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+
 
 const app = express();
 app.use(cors({ origin: config.cors_origin || "*" }));
