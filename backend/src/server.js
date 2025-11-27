@@ -10,7 +10,7 @@ import { connectMongo } from "./db.js";
 import dotenv from "dotenv";
 dotenv.config();
 
-import { saveAgentData, saveNetworkScan } from "./save.js";
+import { saveAgentData, saveNetworkScan, saveVulnerabilityScan } from "./save.js";
 import { runVisualizerUpdate } from "./visualizer-script/visualizer.js";
 
 import * as GetData from "./get.js";
@@ -20,14 +20,18 @@ import visualizerDataRoute from "./api/visualizerData.js";
 import systemRoutes from "./api/system.js";
 import { getLogsSnapshot } from "./controllers/logsController.js";
 import logsStatusRoute from "./api/logs.js";
-import scanRunRouter from "./api/scanRun.js";
+
 import { isRouterIP } from "./utils/networkHelpers.js";
 import LogsStatus from "./models/Log.js";
 import authRoutes from "./api/auth.js";
 import userRoutes from "./api/users.js";
 
+import { initIO } from "./socket-nvs.js";
 
 
+// -----------------------------------------------------
+// CONFIG
+// -----------------------------------------------------
 const configPath = path.resolve("./config.json");
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 
@@ -35,54 +39,47 @@ const app = express();
 app.use(cors({ origin: config.cors_origin || "*" }));
 app.use(express.json());
 
+
+// -----------------------------------------------------
+// ROUTES (REST APIs)
+// -----------------------------------------------------
 app.use("/api/visualizer-data", visualizerDataRoute);
 app.use("/api", systemRoutes);
 app.use("/api/logs-status", logsStatusRoute);
 app.use("/api/usb", usbRoutes);
-app.use("/api/scan", scanRunRouter);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
-app.get("/api/auth/debug", (req, res) => res.json({ msg: "AUTH ROUTES ACTIVE" }));
 
+app.get("/api/auth/debug", (req, res) =>
+  res.json({ msg: "AUTH ROUTES ACTIVE" })
+);
 
 app.get("/health", (_req, res) =>
   res.json({ status: "ok", ts: new Date().toISOString() })
 );
 
+
+// -----------------------------------------------------
+// CREATE SERVER + SOCKET.IO
+// -----------------------------------------------------
 const server = http.createServer(app);
+
 const io = new Server(server, {
   cors: { origin: config.cors_origin || "*", methods: ["GET", "POST"] },
   pingTimeout: 20000,
   pingInterval: 5000,
 });
 
+// Register IO globally
+initIO(io);
+
 const logPath = path.join(process.cwd(), "agent_data_log.json");
 
-
-// -----------------------------------------------------
-// LOG SNAPSHOT LOOP (UNCHANGED)
-// -----------------------------------------------------
-setInterval(async () => {
-  try {
-    let snapshot = await getLogsSnapshot();
-
-    snapshot.unknownDevices = snapshot.unknownDevices.filter(
-      (dev) => !isRouterIP(dev.ip, dev.hostname, dev.vendor)
-    );
-
-    await LogsStatus.findOneAndUpdate({}, { $set: snapshot }, { upsert: true });
-
-    io.emit("logs_status_update", snapshot);
-    console.log("[🧠] Logs snapshot updated");
-
-  } catch (err) {
-    console.error("❌ logs broadcast error:", err);
-  }
-}, 5000);
+global.ACTIVE_AGENTS = {}; // Map agentId -> socketId
 
 
 // -----------------------------------------------------
-// SOCKET.IO
+// SOCKET.IO EVENTS
 // -----------------------------------------------------
 io.on("connection", (socket) => {
   const ip =
@@ -94,7 +91,18 @@ io.on("connection", (socket) => {
 
 
   // -----------------------------------------------------
-  // ⭐ RAW NETWORK SCAN HANDLER
+  // ⭐ AGENT REGISTRATION
+  // -----------------------------------------------------
+  socket.on("register_agent", (agentId) => {
+    if (!agentId) return;
+
+    console.log("🆔 Agent registered:", agentId, "socket:", socket.id);
+    global.ACTIVE_AGENTS[agentId] = socket.id;
+  });
+
+
+  // -----------------------------------------------------
+  // ⭐ RAW NETWORK SCAN
   // -----------------------------------------------------
   socket.on("network_scan_raw", async (devicesList) => {
     console.log("📡 RAW SCAN RECEIVED:", devicesList?.length);
@@ -103,7 +111,21 @@ io.on("connection", (socket) => {
 
 
   // -----------------------------------------------------
-  // ⭐ RESTORED get_data HANDLER (REQUIRED BY FRONTEND)
+  // ⭐ VULNERABILITY SCAN RESULT HANDLER (MISSING EARLIER)
+  // -----------------------------------------------------
+  socket.on("network_vulnscan_raw", async (scanObject) => {
+    try {
+      console.log("🛡️ Received vulnerability scan result");
+      await saveVulnerabilityScan(scanObject);
+      console.log("🛡️ Vulnerability scan saved.");
+    } catch (err) {
+      console.error("❌ Failed to save vulnerability scan:", err);
+    }
+  });
+
+
+  // -----------------------------------------------------
+  // ⭐ FRONTEND get_data
   // -----------------------------------------------------
   socket.on("get_data", async (params, callback) => {
     try {
@@ -117,23 +139,32 @@ io.on("connection", (socket) => {
 
 
   // -----------------------------------------------------
-  // ⭐ EXISTING agent_data
+  // ⭐ NORMAL agent_data
   // -----------------------------------------------------
   socket.on("agent_data", async (payload) => {
     try {
       if (!payload?.type || !payload?.data || !payload?.agentId) {
-        socket.emit("agent_response", { success: false, message: "Invalid payload format" });
+        socket.emit("agent_response", {
+          success: false,
+          message: "Invalid payload format",
+        });
         return;
       }
 
       payload.ip = ip;
 
+      // Log snapshot
       try {
         const logs = fs.existsSync(logPath)
           ? JSON.parse(fs.readFileSync(logPath, "utf8"))
           : [];
+
         logs.push({ timestamp: new Date().toISOString(), payload });
-        fs.writeFileSync(logPath, JSON.stringify(logs.slice(-200), null, 2), "utf8");
+        fs.writeFileSync(
+          logPath,
+          JSON.stringify(logs.slice(-200), null, 2),
+          "utf8"
+        );
       } catch (err) {
         console.error("❌ Failed to log agent data:", err);
       }
@@ -146,6 +177,7 @@ io.on("connection", (socket) => {
       }
 
       await saveAgentData(payload);
+
       socket.emit("agent_response", {
         success: true,
         message: `${payload.type} saved successfully`,
@@ -162,27 +194,70 @@ io.on("connection", (socket) => {
   });
 
 
+  // -----------------------------------------------------
+  // DISCONNECT
+  // -----------------------------------------------------
   socket.on("disconnect", (reason) => {
     console.log(`⚠️ Agent disconnected: ${socket.id} (${reason})`);
+
+    for (const [agentId, id] of Object.entries(global.ACTIVE_AGENTS)) {
+      if (id === socket.id) {
+        delete global.ACTIVE_AGENTS[agentId];
+        console.log(`🗑️ Removed offline agent: ${agentId}`);
+        break;
+      }
+    }
   });
 });
 
 
 // -----------------------------------------------------
-// START SERVER (WITH VISUALIZER INTERVAL)
+// LOAD scanRunRouter AFTER initIO(io)
+// -----------------------------------------------------
+import scanRunRouter from "./api/scanRun.js";
+app.use("/api/scan", scanRunRouter);
+
+
+// -----------------------------------------------------
+// LOG SNAPSHOT LOOP
+// -----------------------------------------------------
+setInterval(async () => {
+  try {
+    let snapshot = await getLogsSnapshot();
+
+    snapshot.unknownDevices = snapshot.unknownDevices.filter(
+      (dev) => !isRouterIP(dev.ip, dev.hostname, dev.vendor)
+    );
+
+    await LogsStatus.findOneAndUpdate(
+      {},
+      { $set: snapshot },
+      { upsert: true }
+    );
+
+    io.emit("logs_status_update", snapshot);
+    console.log("[🧠] Logs snapshot updated");
+  } catch (err) {
+    console.error("❌ logs broadcast error:", err);
+  }
+}, 5000);
+
+
+// -----------------------------------------------------
+// START SERVER
 // -----------------------------------------------------
 async function start() {
   try {
     await connectMongo(config.mongo_uri);
     console.log("✅ MongoDB connected");
 
-    // ⭐ ADD ONLY THIS — NOTHING ELSE ⭐
     setInterval(runVisualizerUpdate, 500);
 
     server.listen(config.socket_port || 5000, "0.0.0.0", () =>
-      console.log(`🚀 Socket server running on port ${config.socket_port || 5000}`)
+      console.log(
+        `🚀 Socket server running on port ${config.socket_port || 5000}`
+      )
     );
-
   } catch (err) {
     console.error("💥 Failed to start server:", err);
     process.exit(1);

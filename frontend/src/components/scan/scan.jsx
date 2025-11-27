@@ -4,6 +4,9 @@ import Sidebar from "../navigation/sidenav.jsx";
 
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
+// ----------------------------
+// Helper Functions
+// ----------------------------
 function guessVendorFromMac(mac) {
   if (!mac) return null;
   const prefix = mac.toLowerCase().replace(/-/g, ":").split(":").slice(0, 3).join(":");
@@ -23,6 +26,9 @@ function isMobileVendor(vendor) {
   return ["apple", "samsung", "xiaomi", "huawei", "oneplus", "pixel", "realme", "vivo"].some(k => s.includes(k));
 }
 
+// ----------------------------
+// Main Component
+// ----------------------------
 const Scan = () => {
   const [loading, setLoading] = useState(false);
   const [devices, setDevices] = useState([]);
@@ -30,22 +36,27 @@ const Scan = () => {
   const [error, setError] = useState("");
   const [rawResponse, setRawResponse] = useState(null);
 
-  // === Fetch previous scan from DB on mount ===
+  // ---------------------------------------
+  // Load LAST SCAN from DB on page load
+  // ---------------------------------------
   useEffect(() => {
     const fetchPreviousScan = async () => {
       try {
         const res = await fetch(`${backendUrl.replace(/\/$/, "")}/api/scan/latest`);
-        if (!res.ok) throw new Error(`Server returned ${res.status}`);
+        if (!res.ok) return;
         const data = await res.json();
         setPreviousScan(data);
       } catch (err) {
-        console.warn("No previous scan data available:", err.message);
+        console.warn("No previous scan:", err.message);
       }
     };
+
     fetchPreviousScan();
   }, []);
 
-  // === Map backend response into table-friendly objects ===
+  // ---------------------------------------
+  // Convert backend scan result → UI devices
+  // ---------------------------------------
   const mapScannerResponseToDevices = (data) => {
     const hosts = data?.result?.hosts || data?.hosts || [];
     return hosts.map(h => ({
@@ -61,7 +72,9 @@ const Scan = () => {
     }));
   };
 
-  // === Trigger a new scan ===
+  // ---------------------------------------
+  // ⭐ RUN NETWORK VULNERABILITY SCAN
+  // ---------------------------------------
   const runScan = async () => {
     setLoading(true);
     setError("");
@@ -69,31 +82,31 @@ const Scan = () => {
     setRawResponse(null);
 
     try {
-      console.log("Starting network scan...");
+      // Step 1: Start scan
       const res = await fetch(`${backendUrl.replace(/\/$/, "")}/api/scan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
 
-      console.log("Response status:", res.status);
       const text = await res.text();
-      let data;
-      try {
-        data = text ? JSON.parse(text) : null;
-      } catch (e) {
-        console.error("Invalid JSON:", e, text);
-        throw new Error(`Invalid JSON from server: ${e.message}`);
-      }
-
+      const data = text ? JSON.parse(text) : null;
       setRawResponse(data);
 
-      if (!res.ok) {
-        const serverMsg = (data && (data.error || data.message)) || `Server returned ${res.status}`;
-        throw new Error(serverMsg);
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || data?.message || "Scan start failed");
       }
 
-      console.log("Scan response data:", data);
-      const devicesList = mapScannerResponseToDevices(data);
+      // Step 2: Wait for agent to finish scanning
+      await new Promise((resolve) => setTimeout(resolve, 6000));
+
+      // Step 3: Fetch final scan results from backend DB
+      const latestRes = await fetch(`${backendUrl.replace(/\/$/, "")}/api/scan/latest`);
+      if (!latestRes.ok) throw new Error("No scan results saved yet");
+
+      const latest = await latestRes.json();
+
+      // Step 4: Convert scan results → devices
+      const devicesList = mapScannerResponseToDevices(latest);
 
       if (!devicesList || devicesList.length === 0) {
         setError("No devices found.");
@@ -102,12 +115,8 @@ const Scan = () => {
         setDevices(devicesList);
       }
 
-      // After running a scan, update previousScan from DB
-      const updated = await fetch(`${backendUrl.replace(/\/$/, "")}/api/scan/latest`);
-      if (updated.ok) {
-        const latest = await updated.json();
-        setPreviousScan(latest);
-      }
+      setPreviousScan(latest);
+
     } catch (err) {
       console.error("Scan error:", err);
       setError(err.message || "Failed to fetch scan results");
@@ -117,7 +126,9 @@ const Scan = () => {
     }
   };
 
-  // === Table renderer ===
+  // ---------------------------------------
+  // Device Table
+  // ---------------------------------------
   const renderDeviceTable = (deviceArray) => (
     <div className="scan-output-table">
       <div className="table-wrapper">
@@ -137,9 +148,7 @@ const Scan = () => {
               <tr key={index}>
                 <td>
                   {d.ips?.length
-                    ? d.ips.map((ip, i) => (
-                        <span key={i} className="ip-badge">{ip}</span>
-                      ))
+                    ? d.ips.map((ip, i) => <span key={i} className="ip-badge">{ip}</span>)
                     : "-"}
                 </td>
                 <td>{d.mac || "-"}</td>
@@ -182,13 +191,15 @@ const Scan = () => {
     </div>
   );
 
+  // ---------------------------------------
+  // Render Page
+  // ---------------------------------------
   return (
     <div className="scan-page">
       <Sidebar />
 
-      {/* === New Scan Section === */}
       <div className="scan-content">
-        <h2>Network Vulnerability  Scanner (beta v.0)</h2>
+        <h2>Network Vulnerability Scanner (beta v.0)</h2>
         <p className="description">
           Trigger a live scan to identify connected devices and their potential vulnerabilities.
         </p>
@@ -221,22 +232,6 @@ const Scan = () => {
           </div>
         )}
       </div>
-
-      {/* === Previous Scan (Sticky Bottom Container) === */}
-      {/* Uncomment when ready to show previous results */}
-      {/* {previousScan && !loading && (
-        <div className="previous-scan-fixed">
-          <div className="previous-scan-header">
-            <h3>Previous Scan Results</h3>
-            <p>
-              Scanned at: {previousScan.scanned_at || previousScan.result?.scanned_at || "Unknown"} |{" "}
-              Network: {previousScan.network || previousScan.result?.network || "N/A"} |{" "}
-              Impact: <strong>{previousScan.overall_impact || "Info"}</strong>
-            </p>
-          </div>
-          {renderDeviceTable(previousScan.hosts || previousScan.result?.hosts || [])}
-        </div>
-      )} */}
     </div>
   );
 };

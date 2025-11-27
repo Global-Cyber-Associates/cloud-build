@@ -7,6 +7,9 @@ import TaskInfo from "./models/TaskInfo.js";
 // ⭐ Network scanner model
 import VisualizerScanner from "./models/VisualizerScanner.js";
 
+// ⭐ Vulnerability scan model
+import ScanResult from "./models/ScanResult.js";
+
 
 // =====================================================
 // ORIGINAL FUNCTION (UNCHANGED)
@@ -127,5 +130,52 @@ export async function saveNetworkScan(devicesList) {
 
   } catch (err) {
     console.error("❌ Failed to save network scan:", err);
+  }
+}
+
+
+
+// =====================================================
+// ⭐ NEW: SAVE VULNERABILITY SCAN RESULTS
+// =====================================================
+export async function saveVulnerabilityScan(scanObject) {
+  try {
+    console.log("🛡️ saveVulnerabilityScan CALLED.");
+
+    if (!scanObject || !scanObject.hosts) {
+      console.error("❌ Invalid vuln scan payload:", scanObject);
+      return;
+    }
+
+    // Overall impact calculation
+    const impacts = scanObject.hosts.map(h => h.impact_level || "Info");
+    const order = ["Info", "Low", "Medium", "High", "Critical"];
+
+    const overall_impact =
+      impacts.length > 0
+        ? impacts.sort((a, b) => order.indexOf(b) - order.indexOf(a))[0]
+        : "Info";
+
+    const doc = {
+      ok: scanObject.ok,
+      network: scanObject.network,
+      scanned_at: scanObject.scanned_at,
+      duration_seconds: scanObject.duration_seconds,
+      hosts: scanObject.hosts,
+      overall_impact,
+      raw: scanObject,
+      updated_at: new Date(),
+    };
+
+    await ScanResult.findOneAndUpdate(
+      {},
+      { $set: doc },
+      { upsert: true, new: true }
+    );
+
+    console.log("✅ Vulnerability scan saved to ScanResult.");
+
+  } catch (err) {
+    console.error("❌ Failed to save vulnerability scan:", err);
   }
 }

@@ -1,117 +1,107 @@
-// backend/api/scanRun.js
+// backend/src/api/scanRun.js
 import express from "express";
-import { execFile } from "child_process";
-import path from "path";
-import { fileURLToPath } from "url";
 import ScanResult from "../models/ScanResult.js";
+import { getIO } from "../socket-nvs.js";
+import { saveVulnerabilityScan } from "../save.js";
 
 const router = express.Router();
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
-// Adjust this path if your scanner script name/location differs
-const scannerScript = path.join(__dirname, "../scanner/network_scanner_cli.py");
+const SCAN_TIMEOUT = 20000; // 20 seconds
 
-// Helper: compute overall impact for the whole network
-function computeOverallImpact(hosts = []) {
-  const order = ["Info", "Low", "Medium", "High", "Critical"];
-  let current = "Info";
-  for (const h of hosts) {
-    const lvl = h?.impact_level || h?.impact || "Info";
-    if (order.indexOf(lvl) > order.indexOf(current)) {
-      current = lvl;
-    }
-  }
-  return current;
-}
 
-// POST /api/scan
+// -----------------------------------------------------
+// ⭐ TRIGGER SCAN AND WAIT FOR AGENT RESULT
+// -----------------------------------------------------
 router.post("/", async (req, res) => {
-  console.log("[api/scan] Triggered network scan");
+  try {
+    const io = getIO();
+    global.ACTIVE_AGENTS = global.ACTIVE_AGENTS || {};
 
-  // You can accept flags from req.body in future (e.g., no_arp)
-  // const noArp = req.body?.no_arp === true;
+    const agentId = req.body.agentId || "Sugumar";
+    const socketId = global.ACTIVE_AGENTS[agentId];
 
-  // Spawn python scanner
-  const child = execFile(
-    "python",
-    [scannerScript],
-    { timeout: 3 * 60 * 1000, maxBuffer: 20 * 1024 * 1024 }, // 3 min, 20MB stdout
-    async (error, stdout, stderr) => {
-      if (error) {
-        console.error("[api/scan] Scanner process error:", error);
-        // include stderr for debugging when available
-        return res.status(500).json({ ok: false, error: error.message, stderr: (stderr || "").toString() });
-      }
-
-      try {
-        const outText = (stdout || "").toString().trim();
-        if (!outText) {
-          console.error("[api/scan] Scanner produced no stdout. Stderr:", (stderr || "").toString());
-          return res.status(500).json({ ok: false, error: "Scanner produced no output", stderr: (stderr || "").toString() });
-        }
-
-        let parsed;
-        try {
-          parsed = JSON.parse(outText);
-        } catch (parseErr) {
-          console.error("[api/scan] Failed to parse scanner JSON:", parseErr);
-          console.error("Raw stdout:", outText);
-          console.error("Stderr:", (stderr || "").toString());
-          return res.status(500).json({ ok: false, error: "Invalid JSON from scanner", detail: parseErr.message, raw: outText });
-        }
-
-        // Normalize parsed shape: expect top-level { ok, scanned_at, network, duration_seconds, hosts }
-        if (!parsed || typeof parsed !== "object") {
-          return res.status(500).json({ ok: false, error: "Scanner returned unexpected payload" });
-        }
-
-        const hosts = Array.isArray(parsed.hosts) ? parsed.hosts : [];
-        const overallImpact = computeOverallImpact(hosts);
-
-        // Replace single doc in DB (upsert)
-        const updatedDoc = await ScanResult.findOneAndUpdate(
-          {},
-          {
-            $set: {
-              ok: parsed.ok !== undefined ? parsed.ok : true,
-              network: parsed.network || "unknown",
-              scanned_at: parsed.scanned_at || new Date().toISOString(),
-              duration_seconds: parsed.duration_seconds || 0,
-              hosts,
-              overall_impact: overallImpact,
-              raw: parsed,
-              source: "local-scanner",
-              updated_at: new Date(),
-            },
-          },
-          { upsert: true, new: true }
-        );
-
-        console.log(`[api/scan] Scan saved. hosts=${hosts.length} overall=${overallImpact}`);
-        return res.json({ ok: true, saved: true, id: updatedDoc._id, result: parsed, overall_impact: overallImpact });
-      } catch (err) {
-        console.error("[api/scan] Error while saving/parsing scanner output:", err);
-        return res.status(500).json({ ok: false, error: "Internal server error", detail: err.message });
-      }
+    if (!socketId) {
+      return res.status(400).json({
+        ok: false,
+        error: "Agent not connected",
+      });
     }
-  );
 
-  // Log scanner stderr as it streams (helpful for debugging)
-  child.stderr?.on("data", (chunk) => {
-    console.error("[scanner stderr]", chunk.toString());
-  });
+    console.log(`🛡️ Triggering vulnerability scan for agent: ${agentId} (socket ${socketId})`);
+
+    // ⬅️ Get actual socket object
+    const agentSocket = io.sockets.sockets.get(socketId);
+    if (!agentSocket) {
+      return res.status(400).json({ ok: false, error: "Agent socket missing" });
+    }
+
+    // -------------------------------
+    // ⭐ Promise waits for agent response
+    // -------------------------------
+    const waitForScan = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("Timed out waiting for vulnerability scan result"));
+      }, SCAN_TIMEOUT);
+
+      agentSocket.once("network_vulnscan_raw", async (scanData) => {
+        clearTimeout(timeout);
+        try {
+          await saveVulnerabilityScan(scanData);
+          resolve(scanData);
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+    // -------------------------------
+    // ⭐ Tell agent to start scanning
+    // -------------------------------
+    io.to(socketId).emit("run_vuln_scan");
+
+    // -------------------------------
+    // ⭐ Wait for agent scan result
+    // -------------------------------
+    const finalScan = await waitForScan;
+
+    return res.json({
+      ok: true,
+      message: "Scan complete",
+      result: finalScan,
+    });
+
+  } catch (err) {
+    console.error("❌ Scan trigger failed:", err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message,
+    });
+  }
 });
 
-// GET /api/scan/latest
+
+// -----------------------------------------------------
+// ⭐ FETCH LATEST SCAN RESULT
+// -----------------------------------------------------
 router.get("/latest", async (_req, res) => {
   try {
-    const last = await ScanResult.findOne({}, {}, { sort: { updated_at: -1 } });
-    if (!last) return res.status(404).json({ ok: false, message: "No previous scan found" });
-    return res.json(last);
+    const doc = await ScanResult.findOne().sort({ updated_at: -1 });
+
+    if (!doc) {
+      return res.status(404).json({
+        ok: false,
+        message: "No scan results found",
+      });
+    }
+
+    return res.json(doc);
+
   } catch (err) {
-    console.error("[api/scan] Failed to fetch latest scan:", err);
-    return res.status(500).json({ ok: false, error: err.message });
+    console.error("❌ Failed to fetch latest scan:", err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message,
+    });
   }
 });
 

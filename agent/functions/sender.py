@@ -7,6 +7,9 @@ import socketio
 import time
 import threading
 from queue import Queue
+import subprocess
+import json
+import sys
 
 logging.basicConfig(level=logging.INFO)
 
@@ -14,13 +17,33 @@ load_dotenv()
 SERVER_URL = os.getenv("SERVER_URL")
 AGENT_ID = os.getenv("AGENT_ID", platform.node())
 
-sio = socketio.Client(reconnection=True, reconnection_attempts=5, reconnection_delay=3)
+
+# -----------------------------------------------------------
+# SOCKET.IO CLIENT
+# -----------------------------------------------------------
+sio = socketio.Client(
+    reconnection=True,
+    reconnection_attempts=5,
+    reconnection_delay=3
+)
+
 send_queue = Queue()
 
 
+# -----------------------------------------------------------
+# SOCKET EVENTS
+# -----------------------------------------------------------
 @sio.event
 def connect():
     logging.info(f"[🔌] Connected to backend Socket.IO at {SERVER_URL}")
+
+    # ⭐ REGISTER AGENT
+    try:
+        sio.emit("register_agent", AGENT_ID)
+        logging.info(f"[🆔] Registered agent: {AGENT_ID}")
+    except Exception as e:
+        logging.error(f"[❌] Failed to register agent: {e}")
+
     flush_queue()
 
 
@@ -29,6 +52,9 @@ def disconnect():
     logging.warning("[⚠️] Disconnected from backend server.")
 
 
+# -----------------------------------------------------------
+# CONNECT FUNCTION
+# -----------------------------------------------------------
 def connect_socket():
     try:
         if not sio.connected:
@@ -37,6 +63,9 @@ def connect_socket():
         logging.error(f"[⚠️] Socket connection failed: {e}")
 
 
+# -----------------------------------------------------------
+# QUEUE FLUSHING
+# -----------------------------------------------------------
 def flush_queue():
     while not send_queue.empty() and sio.connected:
         entry = send_queue.get()
@@ -49,6 +78,9 @@ def flush_queue():
             break
 
 
+# -----------------------------------------------------------
+# SEND AGENT DATA
+# -----------------------------------------------------------
 def send_data(data_type, payload):
     try:
         entry = {
@@ -69,14 +101,20 @@ def send_data(data_type, payload):
         logging.error(f"[❌] Failed to enqueue {data_type}: {e}")
 
 
-# ⭐ RAW LAN SCAN SENDER
+# -----------------------------------------------------------
+# SEND RAW LAN SCAN
+# -----------------------------------------------------------
 def send_raw_network_scan(devices_list):
     try:
         sio.emit("network_scan_raw", devices_list)
+        logging.info("[📡] Sent raw network scan result.")
     except Exception as e:
         logging.error(f"[❌] Failed to send raw network scan: {e}")
 
 
+# -----------------------------------------------------------
+# BACKGROUND QUEUE WORKER
+# -----------------------------------------------------------
 def start_queue_worker():
     def worker():
         while True:
@@ -89,3 +127,42 @@ def start_queue_worker():
 
 start_queue_worker()
 connect_socket()
+
+
+# -----------------------------------------------------------
+# ⭐ VULNERABILITY SCAN HANDLER
+# -----------------------------------------------------------
+@sio.on("run_vuln_scan")
+def handle_vulnerability_scan(data=None):
+    """
+    Triggered when backend emits: io.to(socketId).emit("run_vuln_scan")
+    """
+
+    try:
+        # Correct location: /agent/functions/network_vulnscan.py
+        script_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "network_vulnscan.py"
+        )
+
+        logging.info("[⚡] Running vulnerability scan...")
+        logging.info(f"[📌] Scanner path: {script_path}")
+
+        # Run the script
+        output = subprocess.check_output(
+            [sys.executable, script_path],
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+
+        result = json.loads(output)
+
+        # NEW: backend processor for vuln scan
+        sio.emit("network_vulnscan_raw", result)
+
+        logging.info("[✔️] Vulnerability scan completed and sent.")
+
+    except subprocess.CalledProcessError as err:
+        logging.error(f"[❌] Vulnerability scan script error: {err.output}")
+    except Exception as e:
+        logging.error(f"[❌] Vulnerability scan failed: {e}")
