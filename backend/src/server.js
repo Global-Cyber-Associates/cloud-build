@@ -28,6 +28,13 @@ import userRoutes from "./api/users.js";
 
 import { initIO } from "./socket-nvs.js";
 
+// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+// ⭐ NEW: Dashboard Worker + Dashboard Routes
+// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+import runDashboardWorker from "./D-board/d-aggregator.js";
+import dashboardRoutes from "./api/d-board.js";
+// <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
 
 // -----------------------------------------------------
 // CONFIG
@@ -49,6 +56,14 @@ app.use("/api/logs-status", logsStatusRoute);
 app.use("/api/usb", usbRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+
+// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+// ⭐ NEW DASHBOARD API ENDPOINTS
+// /api/dashboard → full snapshot
+// /api/dashboard/summary → summary only
+// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+app.use("/api/dashboard", dashboardRoutes);
+// <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 app.get("/api/auth/debug", (req, res) =>
   res.json({ msg: "AUTH ROUTES ACTIVE" })
@@ -89,30 +104,20 @@ io.on("connection", (socket) => {
 
   console.log(`🔌 Agent connected: ${socket.id} (${ip})`);
 
-
-  // -----------------------------------------------------
-  // ⭐ AGENT REGISTRATION
-  // -----------------------------------------------------
+  // AGENT REGISTRATION
   socket.on("register_agent", (agentId) => {
     if (!agentId) return;
-
     console.log("🆔 Agent registered:", agentId, "socket:", socket.id);
     global.ACTIVE_AGENTS[agentId] = socket.id;
   });
 
-
-  // -----------------------------------------------------
-  // ⭐ RAW NETWORK SCAN
-  // -----------------------------------------------------
+  // RAW NETWORK SCAN
   socket.on("network_scan_raw", async (devicesList) => {
     console.log("📡 RAW SCAN RECEIVED:", devicesList?.length);
     await saveNetworkScan(devicesList);
   });
 
-
-  // -----------------------------------------------------
-  // ⭐ VULNERABILITY SCAN RESULT HANDLER (MISSING EARLIER)
-  // -----------------------------------------------------
+  // RAW VULNERABILITY SCAN
   socket.on("network_vulnscan_raw", async (scanObject) => {
     try {
       console.log("🛡️ Received vulnerability scan result");
@@ -123,10 +128,7 @@ io.on("connection", (socket) => {
     }
   });
 
-
-  // -----------------------------------------------------
-  // ⭐ FRONTEND get_data
-  // -----------------------------------------------------
+  // FRONTEND GET_DATA
   socket.on("get_data", async (params, callback) => {
     try {
       const result = await GetData.fetchData(params);
@@ -137,10 +139,7 @@ io.on("connection", (socket) => {
     }
   });
 
-
-  // -----------------------------------------------------
-  // ⭐ NORMAL agent_data
-  // -----------------------------------------------------
+  // AGENT DATA
   socket.on("agent_data", async (payload) => {
     try {
       if (!payload?.type || !payload?.data || !payload?.agentId) {
@@ -153,7 +152,6 @@ io.on("connection", (socket) => {
 
       payload.ip = ip;
 
-      // Log snapshot
       try {
         const logs = fs.existsSync(logPath)
           ? JSON.parse(fs.readFileSync(logPath, "utf8"))
@@ -193,13 +191,9 @@ io.on("connection", (socket) => {
     }
   });
 
-
-  // -----------------------------------------------------
   // DISCONNECT
-  // -----------------------------------------------------
   socket.on("disconnect", (reason) => {
     console.log(`⚠️ Agent disconnected: ${socket.id} (${reason})`);
-
     for (const [agentId, id] of Object.entries(global.ACTIVE_AGENTS)) {
       if (id === socket.id) {
         delete global.ACTIVE_AGENTS[agentId];
@@ -251,7 +245,14 @@ async function start() {
     await connectMongo(config.mongo_uri);
     console.log("✅ MongoDB connected");
 
-    setInterval(runVisualizerUpdate, 500);
+    setInterval(runVisualizerUpdate, 3500);
+
+    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    // ⭐ START DASHBOARD WORKER AFTER MONGO CONNECTION
+    // Runs every 1.5 seconds (adjustable)
+    runDashboardWorker(4000);
+    console.log("📊 Dashboard Worker running...");
+    // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     server.listen(config.socket_port || 5000, "0.0.0.0", () =>
       console.log(
