@@ -21,6 +21,9 @@ import CreateUser from "./components/admin/CreateUser.jsx";
 import AdminDashboard from "./components/admin/AdminDashboard.jsx";
 // import ManageUsers from "./components/admin/ManageUsers.jsx"; // create later
 
+// PUBLIC PAGES
+import Download from "./components/download/Download.jsx";
+
 // TOKEN HELPERS
 import { getToken, getRole } from "./utils/authService.js";
 
@@ -51,6 +54,9 @@ function App() {
       <Routes>
         {/* LOGIN */}
         <Route path="/login" element={<Login />} />
+
+        {/* PUBLIC DOWNLOAD PAGE */}
+        <Route path="/download" element={<Download />} />
 
         {/* USER DASHBOARD */}
         <Route
