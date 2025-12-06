@@ -16,6 +16,10 @@ try:
 except Exception:
     load_dotenv = None
 
+
+# -------------------------------------------------------
+# GET PRIMARY IP (works even without WiFi)
+# -------------------------------------------------------
 def _get_ip_address() -> str:
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -26,10 +30,15 @@ def _get_ip_address() -> str:
     except Exception:
         return "unknown"
 
+
+# -------------------------------------------------------
+# GET WLAN/WIFI INTERFACES
+# -------------------------------------------------------
 def _get_wlan_interfaces() -> List[Dict[str, Any]]:
     wlan_list = []
     if not psutil:
         return wlan_list
+
     try:
         addrs = psutil.net_if_addrs()
         for interface, info in addrs.items():
@@ -46,8 +55,13 @@ def _get_wlan_interfaces() -> List[Dict[str, Any]]:
                         })
     except Exception:
         pass
+
     return wlan_list
 
+
+# -------------------------------------------------------
+# CPU INFO
+# -------------------------------------------------------
 def _get_cpu_info() -> Dict[str, Any]:
     if not psutil:
         return {}
@@ -61,24 +75,33 @@ def _get_cpu_info() -> Dict[str, Any]:
     except Exception:
         return {}
 
+
+# -------------------------------------------------------
+# MEMORY INFO
+# -------------------------------------------------------
 def _get_memory_info() -> Dict[str, Any]:
     if not psutil:
         return {}
     try:
         mem = psutil.virtual_memory()
         return {
-            "total_ram": getattr(mem, "total", None),
-            "available_ram": getattr(mem, "available", None),
-            "used_ram": getattr(mem, "used", None),
-            "ram_percent": getattr(mem, "percent", None),
+            "total_ram": mem.total,
+            "available_ram": mem.available,
+            "used_ram": mem.used,
+            "ram_percent": mem.percent,
         }
     except Exception:
         return {}
 
+
+# -------------------------------------------------------
+# DISK INFO
+# -------------------------------------------------------
 def _get_disk_info() -> Dict[str, Any]:
     disks = {}
     if not psutil:
         return disks
+
     try:
         for part in psutil.disk_partitions(all=False):
             try:
@@ -95,14 +118,39 @@ def _get_disk_info() -> Dict[str, Any]:
                 continue
     except Exception:
         pass
+
     return disks
 
+
+# -------------------------------------------------------
+# MAIN SYSTEM INFO (WITH WLAN FALLBACK)
+# -------------------------------------------------------
 def get_system_info() -> Dict[str, Any]:
     """
-    Return a dictionary with host/system information.
-    Safe to call on non-Windows systems; psutil may be required for richer data.
+    Returns complete system information expected by backend admin agent format.
+    Ensures wlan_info ALWAYS contains an IP so visualizer marks agent ONLINE.
     """
+
     try:
+        # Collect WLAN & IP
+        wlan = _get_wlan_interfaces()
+        ip_addr = _get_ip_address()
+
+        # ---------------------------------------------------
+        # ⭐ CRITICAL FIX ⭐
+        # If no WLAN interface detected (desktops, VMs),
+        # force fallback interface using primary IP.
+        # ---------------------------------------------------
+        if not wlan and ip_addr not in ("unknown", None):
+            wlan = [{
+                "interface_name": "fallback",
+                "type": "IPv4",
+                "address": ip_addr,
+                "netmask": None,
+                "broadcast": None,
+            }]
+
+        # Compose final data block
         data = {
             "agent_id": platform.node(),
             "hostname": socket.gethostname(),
@@ -114,18 +162,20 @@ def get_system_info() -> Dict[str, Any]:
             "disk": _get_disk_info(),
             "users": [getpass.getuser()],
             "machine_id": str(uuid.getnode()),
-            "wlan_info": _get_wlan_interfaces(),
-            "ip": _get_ip_address(),
+            "wlan_info": wlan,       # <-- ALWAYS NOT EMPTY NOW
+            "ip": ip_addr,
         }
+
         return data
+
     except Exception as e:
         return {"error": str(e)}
 
+
+# -------------------------------------------------------
+# LOAD AGENT FROM ENV (.env)
+# -------------------------------------------------------
 def load_agent_from_env(env_path: str = None) -> Dict[str, str]:
-    """
-    Helper to load AGENT_ID/AGENT_NAME from environment or a .env file.
-    Returns dict with available keys.
-    """
     info = {}
     if load_dotenv and env_path:
         try:
@@ -134,12 +184,14 @@ def load_agent_from_env(env_path: str = None) -> Dict[str, str]:
                 load_dotenv(p)
         except Exception:
             pass
-    # prefer environment variables
+
     import os
     agent_id = os.getenv("AGENT_ID") or os.getenv("AGENT")
     agent_name = os.getenv("AGENT_NAME") or os.getenv("AGENT")
+
     if agent_id:
         info["agent_id"] = agent_id
     if agent_name:
         info["agent_name"] = agent_name
+
     return info

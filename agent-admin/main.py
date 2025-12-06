@@ -6,8 +6,7 @@ import subprocess
 import json
 import os
 import sys
-import tempfile
-import shutil
+import runpy
 
 from functions.system import get_system_info
 from functions.ports import scan_ports
@@ -17,32 +16,21 @@ from functions.sender import send_data, send_raw_network_scan
 from functions.usbMonitor import monitor_usb, connect_socket, sio
 
 # ============================
-#  SAFE UTF-8 PRINT WRAPPER
+# SAFE PRINT (NO FILES) — silent for --noconsole
 # ============================
 def safe_print(*args, **kwargs):
-    try:
-        print(*args, **kwargs)
-    except Exception:
-        cleaned = []
-        for a in args:
-            if isinstance(a, str):
-                cleaned.append(a.encode("ascii", "ignore").decode())
-            else:
-                cleaned.append(a)
-        print(*cleaned, **kwargs)
-
+    # intentionally do nothing to avoid creating files when running hidden
+    return
 
 # ============================
-#  RESOURCE PATH (MEIPASS FIX)
+# RESOURCE PATH (MEIPASS)
 # ============================
-def resource_path(relative_path):
-    """Return correct path inside EXE or source."""
+def resource_path(relative):
     base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base, relative_path)
-
+    return os.path.join(base, relative)
 
 # ============================
-#  USB MONITOR THREAD
+# USB MONITOR THREAD
 # ============================
 def start_usb_monitor():
     try:
@@ -65,7 +53,7 @@ def start_usb_monitor():
     try:
         monitor_usb(interval=3, timeout=5)
     except Exception as e:
-        safe_print("[USB] monitor crash:", e)
+        safe_print("[USB ERROR]", e)
         traceback.print_exc()
     finally:
         try:
@@ -73,80 +61,98 @@ def start_usb_monitor():
         except:
             pass
 
-
 # ==========================================================
-#  VISUALIZER SCANNER — USE EMBEDDED PYTHON 3.14 RUNTIME
+# START SCANNER (NO TEMP FILES)
+#
+# Strategy:
+#  - If python-embed/python.exe exists -> spawn subprocess with it (hidden).
+#  - Else if running non-frozen (normal python) -> spawn subprocess with sys.executable.
+#  - Else (frozen EXE without embed) -> run scanner_service.py in a background thread using runpy.
 # ==========================================================
 def start_visualizer_scanner():
-    """
-    Run scanner_service.py using embedded python runtime.
-    Works on ANY Windows machine without Python installed.
-    """
-
     base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-
-    python_embed = os.path.join(base, "python-embed", "python.exe")
-    if not os.path.exists(python_embed):
-        safe_print("[SCAN ERROR] Embedded python not found:", python_embed)
-        return None
-
     original_scan = os.path.join(base, "visualizer-scanner", "scanner_service.py")
     if not os.path.exists(original_scan):
         safe_print("[SCAN ERROR] scanner_service.py missing:", original_scan)
         return None
 
-    # Copy scanner to temp folder to avoid locking issues
-    tempdir = tempfile.mkdtemp(prefix="visun_scanner_")
-    temp_scan = os.path.join(tempdir, "scanner_service.py")
-    shutil.copy2(original_scan, temp_scan)
+    # prefer embedded python if present
+    python_embed = os.path.join(base, "python-embed", "python.exe")
+    if os.path.exists(python_embed):
+        cmd = [python_embed, "-u", original_scan]
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                cwd=os.path.dirname(original_scan),
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            threading.Thread(target=scanner_output_listener, args=(proc,), daemon=True).start()
+            safe_print("[SCAN] started with embedded python")
+            return proc
+        except Exception as e:
+            safe_print("[SCAN ERROR] embedded python failed:", e)
+            traceback.print_exc()
+            return None
 
-    safe_print("[SCAN] Scanner copied to tempdir:", tempdir)
+    # if not frozen/pyinstaller (running as script), spawn normal python process
+    if not getattr(sys, "frozen", False):
+        try:
+            cmd = [sys.executable, original_scan]
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                cwd=os.path.dirname(original_scan)
+            )
+            threading.Thread(target=scanner_output_listener, args=(proc,), daemon=True).start()
+            safe_print("[SCAN] started via sys.executable")
+            return proc
+        except Exception as e:
+            safe_print("[SCAN ERROR] starting scanner via sys.executable failed:", e)
+            traceback.print_exc()
+            return None
 
-    cmd = [python_embed, "-u", temp_scan]
-
+    # else: frozen EXE without embedded python — run scanner in-thread (no files, no subprocess)
     try:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            cwd=tempdir,
-        )
+        def run_scanner_in_thread():
+            try:
+                # run_path runs the script in its own globals; keep it daemon
+                runpy.run_path(original_scan, run_name="__scanner_service__")
+            except Exception as e:
+                safe_print("[SCAN THREAD ERROR]", e)
+                traceback.print_exc()
+
+        t = threading.Thread(target=run_scanner_in_thread, daemon=True)
+        t.start()
+        safe_print("[SCAN] scanner service started in-thread (frozen mode)")
+        return None  # no subprocess object
     except Exception as e:
-        safe_print("[SCAN ERROR] Failed to start scanner:", e)
+        safe_print("[SCAN ERROR] cannot run scanner in-thread:", e)
         traceback.print_exc()
         return None
 
-    threading.Thread(target=scanner_output_listener, args=(proc,), daemon=True).start()
-
-    safe_print("[SCAN] Scanner running using embedded Python.")
-    return proc
-
-
 # ==========================================================
-#  SCANNER OUTPUT LISTENER
+# SCANNER OUTPUT LISTENER (parses JSON arrays/objects)
 # ==========================================================
-def extract_first_json(s: str):
-    """Extract first JSON in a line."""
+def extract_first_json(s):
     s = s.strip()
     if not s:
         return None
-
     start = None
-    opening = None
-
     for i, ch in enumerate(s):
         if ch in ("[", "{"):
             start = i
-            opening = ch
             break
     if start is None:
         return None
-
     pairs = {"{": "}", "[": "]"}
     stack = []
-
     for j in range(start, len(s)):
         c = s[j]
         if c in ("{", "["):
@@ -155,139 +161,82 @@ def extract_first_json(s: str):
             if not stack:
                 continue
             top = stack[-1]
-            if pairs[top] == c:
+            if pairs.get(top) == c:
                 stack.pop()
                 if not stack:
                     return s[start:j+1]
     return None
 
-
 def scanner_output_listener(proc):
     if not proc or not getattr(proc, "stdout", None):
         return
-
     try:
         for raw in proc.stdout:
             if not raw:
                 continue
-
             line = raw.strip()
             js = extract_first_json(line)
-
             if not js:
-                if line.startswith("[") or line.startswith("{"):
-                    js = line
-
-            if js:
-                try:
-                    parsed = json.loads(js)
-                    if isinstance(parsed, list):
-                        send_raw_network_scan(parsed)
-                    elif isinstance(parsed, dict):
-                        send_raw_network_scan([parsed])
-                except:
-                    pass
-
+                continue
+            try:
+                parsed = json.loads(js)
+                if isinstance(parsed, list):
+                    send_raw_network_scan(parsed)
+                elif isinstance(parsed, dict):
+                    send_raw_network_scan([parsed])
+            except Exception:
+                pass
     except Exception as e:
         safe_print("[SCAN STREAM ERROR]", e)
-    finally:
-        try:
-            rc = proc.poll()
-            if rc is None:
-                rc = proc.wait(timeout=0.3)
-        except:
-            rc = None
-
-        safe_print("[SCANNER] child exited code:", rc)
-
+        traceback.print_exc()
 
 # ==========================================================
-#  MAIN SYSTEM SCANS
+# MAIN SYSTEM SCANS
 # ==========================================================
 def run_scans():
     try:
         send_data("system_info", get_system_info())
         send_data("port_scan", scan_ports("127.0.0.1", "1-1024"))
         send_data("task_info", collect_process_info())
-
         apps = get_installed_apps()
         send_data("installed_apps", {"apps": apps, "count": len(apps)})
     except Exception as e:
         safe_print("[SCAN ERROR]", e)
         traceback.print_exc()
 
-
 # ==========================================================
-#  SINGLE INSTANCE LOCK
-# ==========================================================
-def already_running():
-    try:
-        import psutil
-    except:
-        return False
-
-    exe = os.path.basename(sys.executable).lower()
-    count = 0
-
-    for p in psutil.process_iter(['name']):
-        try:
-            if p.info['name'] and exe in p.info['name'].lower():
-                count += 1
-        except:
-            pass
-
-    return count > 1
-
-
-# ==========================================================
-#  MAIN ENTRY
+# MAIN ENTRY (NO FILE CREATION)
 # ==========================================================
 if __name__ == "__main__":
-    safe_print("=== VISUN ADMIN AGENT STARTED ===")
-    safe_print("Executable:", sys.executable)
+    safe_print("=== ADMIN AGENT START ===")
 
-    try:
-        import psutil
-        if already_running():
-            safe_print("[WARNING] Another instance already running. Exiting.")
-            sys.exit(0)
-    except:
-        pass
-
-    # Start socket thread
+    # socket thread
     def start_socket():
         try:
             connect_socket()
-
             @sio.event
             def connect():
-                safe_print("[SOCKET] CONNECTED")
-
+                safe_print("[SOCKET CONNECTED]")
             @sio.event
             def disconnect():
-                safe_print("[SOCKET] DISCONNECTED")
-
+                safe_print("[SOCKET DISCONNECTED]")
             sio.wait()
-
         except Exception as e:
             safe_print("[SOCKET ERROR]", e)
-            traceback.print_exc()
             while True:
                 time.sleep(3)
 
     threading.Thread(target=start_socket, daemon=False).start()
 
-    # USB monitor
+    # usb monitor
     threading.Thread(target=start_usb_monitor, daemon=True).start()
 
-    # Start embedded scanner
+    # start scanner (no temp files)
     sp = start_visualizer_scanner()
-    if sp:
-        safe_print("[SCAN] Scanner launched.")
-    else:
-        safe_print("[SCAN] Scanner NOT launched.")
+    if not sp:
+        safe_print("[SCAN] Scanner started in-thread or failed to spawn subprocess.")
 
-    # Main loop
+    # main loop
     while True:
         run_scans()
         time.sleep(3)
