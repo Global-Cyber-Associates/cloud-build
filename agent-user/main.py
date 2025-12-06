@@ -13,36 +13,25 @@ from functions.sender import send_data
 from functions.usbMonitor import monitor_usb, connect_socket, sio
 
 
-# ---------------- SINGLE INSTANCE LOCK ----------------
-def already_running():
+# ============================
+# SAFE PRINT
+# ============================
+def safe_print(*args, **kwargs):
     try:
-        import psutil
+        print(*args, **kwargs)
     except:
-        return False
-
-    exe = os.path.basename(sys.executable).lower()
-    count = 0
-
-    for p in psutil.process_iter(['name']):
-        try:
-            if p.info['name'] and exe in p.info['name'].lower():
-                count += 1
-        except:
-            pass
-
-    return count > 1
+        pass
 
 
-# ---------------- USB MONITOR THREAD ----------------
+# ============================
+# USB MONITOR THREAD
+# ============================
 def start_usb_monitor():
     try:
         pythoncom.CoInitialize()
-    except Exception as e:
-        print("[USB] CoInitialize failed:", e)
+    except:
+        pass
 
-    print("[USB] Monitor thread started")
-
-    # backend → agent validation data
     try:
         sio.latest_usb_status = None
     except:
@@ -56,10 +45,8 @@ def start_usb_monitor():
             pass
 
     try:
-        # Just run USB loop (already EXE-safe inside usbMonitor)
         monitor_usb(interval=3, timeout=5)
     except Exception as e:
-        print("[USB] monitor_usb crashed:", e)
         traceback.print_exc()
     finally:
         try:
@@ -68,76 +55,65 @@ def start_usb_monitor():
             pass
 
 
-# ---------------- SOCKET THREAD ----------------
+# ============================
+# SOCKET THREAD
+# ============================
 def start_socket():
-    print("[SOCKET] Starting socket...")
-
+    safe_print("[SOCKET] Starting socket...")
     try:
         connect_socket()
 
         @sio.event
         def connect():
-            print("[SOCKET] CONNECTED")
+            safe_print("[SOCKET CONNECTED]")
 
         @sio.event
         def disconnect():
-            print("[SOCKET] DISCONNECTED")
+            safe_print("[SOCKET DISCONNECTED]")
 
-        # Keep alive
-        if hasattr(sio, "wait"):
-            sio.wait()
-        else:
-            while True:
-                time.sleep(60)
+        sio.wait()
 
     except Exception as e:
-        print("[SOCKET] Thread crashed:", e)
+        safe_print("[SOCKET ERROR]", e)
         traceback.print_exc()
 
 
-# ---------------- MAIN SCANS (ONLY what user agent needs) ----------------
+# ============================
+# MAIN SYSTEM SCANS
+# ============================
 def run_scans():
     try:
-        # System info
-        send_data("system_info", get_system_info())
+        # ✔ FIX: SEND EXACTLY LIKE ADMIN AGENT
+        sysinfo = get_system_info()
+        send_data("system_info", sysinfo)
 
-        # Running processes
+        # other unchanged events
         send_data("task_info", collect_process_info())
 
-        # Installed apps
         apps = get_installed_apps()
-        send_data("installed_apps", {"apps": apps, "count": len(apps)})
-
-        # USB handled separately
+        send_data("installed_apps", {
+            "apps": apps,
+            "count": len(apps)
+        })
 
     except Exception as e:
-        print("[❌] Scan error:", e)
+        safe_print("[SCAN ERROR]", e)
         traceback.print_exc()
 
 
-# ---------------- MAIN ENTRY ----------------
+# ============================
+# ENTRY POINT
+# ============================
 if __name__ == "__main__":
-    print("=== USER AGENT STARTED ===")
-    print("Executable:", sys.executable)
-    print("CWD:", os.getcwd())
-    print("Frozen:", getattr(sys, "frozen", False))
+    safe_print("=== USER AGENT STARTED ===")
 
-    # Prevent duplicate instances
-    try:
-        import psutil
-        if already_running():
-            print("[⚠️] Another instance is running. Exiting.")
-            sys.exit(0)
-    except:
-        pass
-
-    # Start main socket thread (non-daemon)
+    # socket thread
     threading.Thread(target=start_socket, daemon=False).start()
 
-    # Start USB monitor thread
+    # usb monitor
     threading.Thread(target=start_usb_monitor, daemon=True).start()
 
-    # Main agent loop
+    # main loop
     while True:
         run_scans()
         time.sleep(3)

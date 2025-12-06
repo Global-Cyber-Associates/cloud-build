@@ -1,5 +1,9 @@
 {
+<<<<<<< HEAD
   "mongo_uri": "mongodb+srv://sv2154_db_user:sugu@cluster0.7wuud4w.mongodb.net/user",
+=======
+  "mongo_uri": "mongodb+srv://sv2154_db_user:sugu@cluster0.7wuud4w.mongodb.net/office",
+>>>>>>> e483380424be5c8923f6fdad55390a24580f7088
   "socket_port": 5000,
   "cors_origin": "*"
 }

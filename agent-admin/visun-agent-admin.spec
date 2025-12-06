@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('functions', 'functions'), ('visualizer-scanner', 'visualizer-scanner')],
+    datas=[('functions', 'functions'), ('visualizer-scanner', 'visualizer-scanner'), ('python-embed', 'python-embed')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

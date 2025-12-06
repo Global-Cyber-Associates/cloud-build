@@ -1,45 +1,34 @@
 #!/usr/bin/env python3
 """
-network_scanner_cli.py
-Auto-detect local network (gateway/interface) and run local vulnerability scan.
-
-Usage:
-  python network_scanner_cli.py
-  python network_scanner_cli.py 192.168.1.0/24
+Pure-Python LAN scanner — single EXE friendly.
+- No Nmap
+- No Scapy
+- No DLLs
+- Works in PyInstaller onefile
+- Windows 10+ compatible
+- Strict filtering: no .255, no out-of-network IPs
 """
 
 import argparse
 import asyncio
 import json
+import re
 import socket
+import subprocess
 import sys
 import time
 from datetime import datetime
-from ipaddress import IPv4Network, ip_interface
-from collections import OrderedDict
+from ipaddress import IPv4Network
 
-# Optional libraries
-_have_netifaces = False
-_have_psutil = False
-try:
-    import netifaces as _netifaces
-    _have_netifaces = True
-except Exception:
-    _netifaces = None
+COMMON_PORTS = [
+    21, 22, 23, 25, 53, 80, 110, 139, 143,
+    161, 443, 445, 3306, 3389, 5900, 8080
+]
 
-try:
-    import psutil as _psutil
-    _have_psutil = True
-except Exception:
-    _psutil = None
-
-try:
-    from scapy.all import ARP, Ether, srp, conf
-except Exception:
-    ARP = Ether = srp = conf = None
-
-
-COMMON_PORTS = [21, 22, 23, 25, 53, 80, 110, 139, 143, 161, 443, 445, 3306, 3389, 5900, 8080]
+DISCOVERY_PORTS = [80, 443, 22]
+DISCOVERY_TIMEOUT = 0.6
+PORT_TIMEOUT = 1.5
+BANNER_READ_BYTES = 1024
 
 
 # ------------------ Network Detection ------------------
@@ -47,63 +36,14 @@ def get_local_ip_by_socket():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
-        local_ip = s.getsockname()[0]
+        ip = s.getsockname()[0]
         s.close()
-        return local_ip
-    except Exception:
+        return ip
+    except:
         return None
 
 
-def cidr_from_ip_and_mask(ip_str, mask_str):
-    try:
-        if isinstance(mask_str, int) or (isinstance(mask_str, str) and mask_str.startswith("/")):
-            prefix = int(str(mask_str).lstrip("/"))
-            net = IPv4Network(f"{ip_str}/{prefix}", strict=False)
-            return str(net.with_prefixlen)
-        if isinstance(mask_str, str) and mask_str.count(".") == 3:
-            iface = ip_interface(f"{ip_str}/{mask_str}")
-            return str(iface.network.with_prefixlen)
-    except Exception:
-        pass
-    return None
-
-
-def detect_network_with_netifaces():
-    try:
-        gws = _netifaces.gateways()
-        default = gws.get("default", {})
-        gw_info = default.get(_netifaces.AF_INET)
-        if not gw_info:
-            return None
-        gw_ip, iface = gw_info[0], gw_info[1]
-        addrs = _netifaces.ifaddresses(iface).get(_netifaces.AF_INET, [])
-        if not addrs:
-            return None
-        addr = addrs[0]
-        ip = addr.get("addr")
-        netmask = addr.get("netmask")
-        cidr = cidr_from_ip_and_mask(ip, netmask)
-        return cidr or f"{ip.rsplit('.', 1)[0]}.0/24"
-    except Exception:
-        return None
-
-
-def detect_network_with_psutil():
-    try:
-        conns = _psutil.net_if_addrs()
-        for iface, addrlist in conns.items():
-            for addr in addrlist:
-                if addr.family == socket.AF_INET and not addr.address.startswith("127."):
-                    ip = addr.address
-                    netmask = addr.netmask
-                    cidr = cidr_from_ip_and_mask(ip, netmask)
-                    return cidr or f"{ip.rsplit('.', 1)[0]}.0/24"
-    except Exception:
-        pass
-    return None
-
-
-def detect_network_fallback():
+def auto_detect_network():
     ip = get_local_ip_by_socket()
     if not ip:
         return None
@@ -111,93 +51,132 @@ def detect_network_fallback():
     return f"{base}.0/24"
 
 
-def auto_detect_network():
-    if _have_netifaces:
+# ------------------ ARP Parsing ------------------
+def parse_arp_windows(output):
+    hosts = []
+    for line in output.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        m = re.match(r"(\d+\.\d+\.\d+\.\d+)\s+([0-9a-fA-F\-:]{7,})\s+\w+", line)
+        if m:
+            ip = m.group(1)
+            mac = m.group(2).replace("-", ":").lower()
+            hosts.append({"ip": ip, "mac": mac})
+    return hosts
+
+
+def parse_arp_unix(output):
+    hosts = []
+    for line in output.splitlines():
+        line = line.strip()
+
+        # ip neigh format
+        m = re.match(r"(\d+\.\d+\.\d+\.\d+).*lladdr\s+([0-9a-fA-F:]{7,})", line)
+        if m:
+            hosts.append({"ip": m.group(1), "mac": m.group(2).lower()})
+            continue
+
+        # arp -n style
+        m2 = re.match(r"(\d+\.\d+\.\d+\.\d+).*?([0-9a-fA-F:]{7,})\s", line)
+        if m2:
+            hosts.append({"ip": m2.group(1), "mac": m2.group(2).lower()})
+    return hosts
+
+
+def arp_discover_windows():
+    try:
+        out = subprocess.check_output(["arp", "-a"], text=True, stderr=subprocess.DEVNULL)
+        return parse_arp_windows(out)
+    except:
+        return []
+
+
+def arp_discover_unix():
+    try:
+        out = subprocess.check_output(["ip", "neigh"], text=True, stderr=subprocess.DEVNULL)
+        h = parse_arp_unix(out)
+        if h:
+            return h
+    except:
+        pass
+    try:
+        out = subprocess.check_output(["arp", "-n"], text=True, stderr=subprocess.DEVNULL)
+        return parse_arp_unix(out)
+    except:
+        return []
+
+
+def arp_discover(network_cidr):
+    if sys.platform.startswith("win"):
+        return arp_discover_windows()
+    return arp_discover_unix()
+
+
+# ------------------ Strict IP Filtering ------------------
+def ip_in_network(ip_str, network_obj):
+    try:
+        # Represent IP as /32 network and check if it's inside network_obj
+        ip = IPv4Network(f"{ip_str}/32")
+        return ip.subnet_of(network_obj)
+    except:
+        return False
+
+
+def filter_invalid_hosts(hosts, network_obj):
+    valid = []
+    broadcast = str(network_obj.broadcast_address)
+
+    for h in hosts:
+        ip = h.get("ip")
+        if not ip:
+            continue
+        if ip == broadcast:
+            continue
+        if ip_in_network(ip, network_obj):
+            valid.append(h)
+
+    return valid
+
+
+# ------------------ TCP Probe Discovery ------------------
+async def tcp_probe_ip(ip, ports=DISCOVERY_PORTS, timeout=DISCOVERY_TIMEOUT):
+    for p in ports:
         try:
-            cidr = detect_network_with_netifaces()
-            if cidr:
-                return cidr
-        except Exception:
-            pass
-    if _have_psutil:
-        try:
-            cidr = detect_network_with_psutil()
-            if cidr:
-                return cidr
-        except Exception:
-            pass
-    return detect_network_fallback()
-
-
-# ------------------ Vulnerability Heuristics ------------------
-def heuristic_flags(host_entry):
-    """
-    Analyze open ports and banners to identify vulnerabilities and assign impact levels.
-    """
-    findings = []
-    open_ports = host_entry.get("open_ports", {})
-
-    def add_finding(desc, impact):
-        findings.append({"description": desc, "impact": impact})
-
-    # SMB (445)
-    if 445 in open_ports:
-        add_finding("SMB open (445) — may expose file shares or SMBv1 vulnerabilities.", "High")
-
-    # Telnet (23)
-    if 23 in open_ports:
-        add_finding("Telnet open (23) — insecure plaintext credentials.", "Critical")
-
-    # RDP (3389)
-    if 3389 in open_ports:
-        add_finding("RDP open (3389) — check NLA and authentication policies.", "High")
-
-    # VNC (5900)
-    if 5900 in open_ports:
-        add_finding("VNC open (5900) — may allow unauthenticated desktop access.", "High")
-
-    # FTP (21)
-    if 21 in open_ports:
-        add_finding("FTP open (21) — insecure, may allow anonymous access.", "Medium")
-
-    # HTTP/HTTPS ports
-    for p in (80, 8080, 443):
-        if p in open_ports:
-            banner = open_ports[p].get("banner", "")
-            if "Apache" in banner:
-                if "2.2" in banner or "2.0" in banner:
-                    add_finding(f"Outdated Apache server detected on port {p}.", "Medium")
-                else:
-                    add_finding(f"Web server (Apache) detected on port {p}.", "Low")
-            elif "IIS" in banner:
-                add_finding(f"Microsoft IIS web server detected on port {p}.", "Medium")
-            elif "nginx" in banner.lower():
-                add_finding(f"nginx server detected on port {p}.", "Low")
-            elif "400 Bad Request" in banner:
-                add_finding(f"Web service responded with error 400 on port {p}.", "Info")
-
-    # SSH (22)
-    if 22 in open_ports:
-        banner = open_ports[22].get("banner", "")
-        if "OpenSSH" in banner and "OpenSSH_" in banner:
+            fut = asyncio.open_connection(ip, p)
+            r, w = await asyncio.wait_for(fut, timeout=timeout)
             try:
-                ver = banner.split("OpenSSH_")[1].split()[0]
-                major = int(ver.split(".")[0])
-                if major < 7:
-                    add_finding(f"Old OpenSSH version detected ({ver}) — upgrade recommended.", "Medium")
-                else:
-                    add_finding(f"OpenSSH service detected ({ver}).", "Low")
-            except Exception:
-                add_finding("SSH service detected — ensure strong passwords/keys.", "Low")
+                w.close()
+                await w.wait_closed()
+            except:
+                pass
+            return ip
+        except:
+            pass
+    return None
 
-    if not findings:
-        add_finding("No obvious vulnerabilities detected.", "Info")
 
-    return findings
+async def discover_by_tcp(network_cidr, concurrency=200):
+    net = IPv4Network(network_cidr, strict=False)
+    ips = [str(ip) for ip in net.hosts()]  # net.hosts() excludes broadcast correctly
+
+    sem = asyncio.Semaphore(concurrency)
+    results = []
+
+    async def worker(ip):
+        async with sem:
+            r = await tcp_probe_ip(ip)
+            if r:
+                results.append(r)
+
+    tasks = [asyncio.create_task(worker(ip)) for ip in ips]
+    await asyncio.gather(*tasks)
+
+    return [{"ip": ip, "mac": ""} for ip in results]
 
 
 # ------------------ Port Scanning ------------------
-async def scan_host_ports(ip, ports, concurrency=200):
+async def scan_host_ports(ip, ports, concurrency=200, timeout=PORT_TIMEOUT):
     sem = asyncio.Semaphore(concurrency)
     open_ports = {}
 
@@ -205,108 +184,153 @@ async def scan_host_ports(ip, ports, concurrency=200):
         async with sem:
             try:
                 fut = asyncio.open_connection(ip, port)
-                reader, writer = await asyncio.wait_for(fut, timeout=1.5)
-                writer.write(b"\r\n")
-                await writer.drain()
+                reader, writer = await asyncio.wait_for(fut, timeout=timeout)
+
+                banner = ""
                 try:
-                    data = await asyncio.wait_for(reader.read(1024), timeout=1.0)
-                except Exception:
-                    data = b""
-                banner = data.decode(errors="ignore").strip() if data else ""
-                open_ports[port] = {"banner": banner}
-                writer.close()
-                try:
-                    await writer.wait_closed()
-                except Exception:
+                    writer.write(b"\r\n")
+                    await writer.drain()
+                    data = await asyncio.wait_for(reader.read(BANNER_READ_BYTES), timeout=0.8)
+                    if data:
+                        banner = data.decode(errors="ignore").strip()
+                except:
                     pass
-            except Exception:
+
+                open_ports[port] = {"banner": banner}
+
+                try:
+                    writer.close()
+                    await writer.wait_closed()
+                except:
+                    pass
+
+            except:
                 pass
 
     tasks = [asyncio.create_task(worker(p)) for p in ports]
     await asyncio.gather(*tasks)
+
     return open_ports
 
 
-# ------------------ ARP Discovery ------------------
-def arp_discover(network_cidr, timeout=2):
-    if not ARP:
-        return []
-    conf.verb = 0
-    try:
-        net = IPv4Network(network_cidr, strict=False)
-    except Exception:
-        return []
-    pkt = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=str(net.with_prefixlen))
-    try:
-        ans, _ = srp(pkt, timeout=timeout, verbose=0)
-    except PermissionError:
-        raise PermissionError("ARP discovery requires elevated privileges.")
-    hosts = []
-    for snd, rcv in ans:
-        hosts.append({"ip": rcv.psrc, "mac": rcv.hwsrc})
-    return hosts
+# ------------------ Vulnerability Heuristics ------------------
+def heuristic_flags(host_entry):
+    findings = []
+    open_ports = host_entry.get("open_ports", {})
+
+    def add(desc, impact):
+        findings.append({"description": desc, "impact": impact})
+
+    if 445 in open_ports:
+        add("SMB open (445) — possible SMBv1 risks.", "High")
+
+    if 23 in open_ports:
+        add("Telnet open (23) — plaintext credentials.", "Critical")
+
+    if 3389 in open_ports:
+        add("RDP open (3389) — verify NLA.", "High")
+
+    if 5900 in open_ports:
+        add("VNC open (5900).", "High")
+
+    if 21 in open_ports:
+        add("FTP open (21) — insecure.", "Medium")
+
+    for p in (80, 8080, 443):
+        if p in open_ports:
+            banner = open_ports[p].get("banner", "")
+            if "Apache" in banner:
+                add(f"Apache server detected ({banner}).", "Low")
+            elif "IIS" in banner:
+                add(f"Microsoft IIS detected ({banner}).", "Medium")
+            elif "nginx" in banner.lower():
+                add(f"nginx detected ({banner}).", "Low")
+
+    if 22 in open_ports:
+        banner = open_ports[22].get("banner", "")
+        if "OpenSSH_" in banner:
+            try:
+                ver = banner.split("OpenSSH_")[1].split()[0]
+                major = int(ver.split(".")[0])
+                if major < 7:
+                    add(f"Old OpenSSH version {ver}.", "Medium")
+                else:
+                    add(f"OpenSSH detected {ver}.", "Low")
+            except:
+                add("SSH detected.", "Low")
+
+    if not findings:
+        add("No obvious vulnerabilities detected.", "Info")
+
+    return findings
 
 
-# ------------------ Network Scanner ------------------
-async def scan_network(network_cidr, ports=COMMON_PORTS):
+# ------------------ Scan Orchestration ------------------
+async def scan_network_async(network_cidr, ports=COMMON_PORTS, concurrency=200):
     start = time.time()
-    hosts = []
-    try:
-        discovered = arp_discover(network_cidr)
-    except PermissionError:
-        print("ARP discovery requires elevated privileges. Falling back to TCP-probe discovery.")
-        discovered = []
+    net = IPv4Network(network_cidr, strict=False)
 
+    # --- ARP discovery ---
+    discovered = arp_discover(network_cidr)
+    discovered = filter_invalid_hosts(discovered, net)
+
+    # --- TCP fallback ---
     if not discovered:
-        net = IPv4Network(network_cidr, strict=False)
-        ips = [str(ip) for ip in net.hosts()]
+        tcp_hosts = await discover_by_tcp(network_cidr, concurrency=concurrency)
+        discovered = filter_invalid_hosts(tcp_hosts, net)
 
-        async def probe(ip):
-            for p in (80, 443, 22):
-                try:
-                    fut = asyncio.open_connection(ip, p)
-                    r, w = await asyncio.wait_for(fut, timeout=0.6)
-                    w.close()
-                    try:
-                        await w.wait_closed()
-                    except Exception:
-                        pass
-                    return ip
-                except Exception:
-                    pass
-            return None
+    # Dedupe
+    seen = set()
+    unique = []
+    for h in discovered:
+        ip = h["ip"]
+        if ip not in seen:
+            seen.add(ip)
+            unique.append(h)
 
-        tasks = [asyncio.create_task(probe(ip)) for ip in ips]
-        results = await asyncio.gather(*tasks)
-        discovered = [{"ip": r, "mac": ""} for r in results if r]
+    # --- Port scanning ---
+    hosts = []
+    for h in unique:
+        ip = h["ip"]
+        host_entry = {
+            "ip": ip,
+            "mac": h.get("mac", ""),
+            "open_ports": {},
+            "vuln_flags": [],
+            "impact_level": "Info",
+        }
 
-    for entry in discovered:
-        ip = entry["ip"]
-        host_entry = {"ip": ip, "mac": entry.get("mac", ""), "open_ports": {}, "vuln_flags": [], "impact_level": "Info"}
-        open_ports = await scan_host_ports(ip, ports)
+        open_ports = await scan_host_ports(ip, ports, concurrency=concurrency)
         host_entry["open_ports"] = open_ports
         host_entry["vuln_flags"] = heuristic_flags(host_entry)
-        # Compute overall impact level
+
+        # compute impact level
         impacts = [f["impact"] for f in host_entry["vuln_flags"]]
         levels = ["Info", "Low", "Medium", "High", "Critical"]
         if impacts:
-            host_entry["impact_level"] = max(impacts, key=lambda i: levels.index(i))
+            host_entry["impact_level"] = max(impacts, key=lambda x: levels.index(x))
+
         hosts.append(host_entry)
 
-    elapsed = time.time() - start
     return {
         "ok": True,
         "scanned_at": datetime.utcnow().isoformat() + "Z",
         "network": network_cidr,
-        "duration_seconds": round(elapsed, 2),
-        "hosts": hosts,
+        "duration_seconds": round(time.time() - start, 2),
+        "hosts": hosts
     }
 
 
-# ------------------ CLI Entry ------------------
+def scan_network(network_cidr, ports=COMMON_PORTS, concurrency=200):
+    return asyncio.run(scan_network_async(network_cidr, ports=ports, concurrency=concurrency))
+
+
+# ------------------ CLI ------------------
 def main():
-    parser = argparse.ArgumentParser(description="Auto-detect local network and run vulnerability scan.")
-    parser.add_argument("network", nargs="?", help="Target network (optional)")
+    parser = argparse.ArgumentParser(description="Pure Python LAN vulnerability scanner")
+    parser.add_argument("network", nargs="?", help="Target CIDR (optional)")
+    parser.add_argument("--ports", help="Comma-separated ports")
+    parser.add_argument("--concurrency", "-c", type=int, default=200)
     args = parser.parse_args()
 
     network = args.network or auto_detect_network()
@@ -314,7 +338,16 @@ def main():
         print(json.dumps({"ok": False, "error": "Unable to detect network."}))
         sys.exit(1)
 
-    print(json.dumps(asyncio.run(scan_network(network))))
+    if args.ports:
+        try:
+            ports = [int(x.strip()) for x in args.ports.split(",") if x.strip()]
+        except:
+            ports = COMMON_PORTS
+    else:
+        ports = COMMON_PORTS
+
+    result = scan_network(network, ports=ports, concurrency=args.concurrency)
+    print(json.dumps(result))
 
 
 if __name__ == "__main__":
