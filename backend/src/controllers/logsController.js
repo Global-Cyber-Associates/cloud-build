@@ -36,12 +36,16 @@ export async function getLogsSnapshot() {
         "data.memory.ram_percent": 1,
         "data.cpu.logical_cores": 1,
         timestamp: 1,
+        lastSeen: 1, // ⭐ MUST BE INCLUDED
       }
     ).lean();
 
     const agentSnapshots = agents.map((a) => {
-      const lastSeen = new Date(a.timestamp).getTime();
+      // ⭐ FINAL FIX — use lastSeen instead of timestamp
+      const lastSeenValue = a.lastSeen || a.timestamp;
+      const lastSeen = new Date(lastSeenValue).getTime();
       const isOnline = now - lastSeen < 15000; // 15s threshold
+
       return {
         agentId: a.agentId,
         hostname: a.data?.hostname || "Unknown",
@@ -51,7 +55,7 @@ export async function getLogsSnapshot() {
         ram_percent: a.data?.memory?.ram_percent || 0,
         cpu_cores: a.data?.cpu?.logical_cores || 0,
         status: isOnline ? "online" : "offline",
-        lastSeen: a.timestamp,
+        lastSeen: lastSeenValue,
       };
     });
 
