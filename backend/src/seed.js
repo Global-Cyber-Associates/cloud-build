@@ -3,29 +3,12 @@ import User from "./models/User.js";
 
 export const seedUsers = async () => {
   try {
-    const adminEmail = process.env.ADMIN_EMAIL;
-    const adminPassword = process.env.ADMIN_PASSWORD;
     const userEmail = process.env.USER_EMAIL;
     const userPassword = process.env.USER_PASSWORD;
 
-    if (!adminEmail || !adminPassword || !userEmail || !userPassword) {
+    if (!userEmail || !userPassword) {
       console.log("⚠️ Missing default credentials in .env, skipping seeding.");
       return;
-    }
-
-    // Check for Admin
-    const existingAdmin = await User.findOne({ email: adminEmail });
-    if (!existingAdmin) {
-      const hashedPassword = await bcrypt.hash(adminPassword, 10);
-      await User.create({
-        name: "Admin",
-        email: adminEmail,
-        password: hashedPassword,
-        role: "admin",
-      });
-      console.log(`✅ Default Admin created: ${adminEmail}`);
-    } else {
-      console.log("ℹ️ Admin already exists.");
     }
 
     // Check for User
