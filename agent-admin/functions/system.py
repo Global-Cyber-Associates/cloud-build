@@ -103,6 +103,19 @@ def get_system_info() -> Dict[str, Any]:
     Safe to call on non-Windows systems; psutil may be required for richer data.
     """
     try:
+        wlan = _get_wlan_interfaces()
+        ip_addr = _get_ip_address()
+
+        # ⭐ FIX: fallback wlan entry so visualizer can match agent IP
+        if not wlan and ip_addr not in ("unknown", None):
+            wlan = [{
+                "interface_name": "fallback",
+                "type": "IPv4",
+                "address": ip_addr,
+                "netmask": None,
+                "broadcast": None,
+            }]
+
         data = {
             "agent_id": platform.node(),
             "hostname": socket.gethostname(),
@@ -114,8 +127,8 @@ def get_system_info() -> Dict[str, Any]:
             "disk": _get_disk_info(),
             "users": [getpass.getuser()],
             "machine_id": str(uuid.getnode()),
-            "wlan_info": _get_wlan_interfaces(),
-            "ip": _get_ip_address(),
+            "wlan_info": wlan,   # <-- updated to include fallback
+            "ip": ip_addr,       # <-- unchanged but stored for completeness
         }
         return data
     except Exception as e:
