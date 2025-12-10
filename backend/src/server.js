@@ -29,12 +29,10 @@ import userRoutes from "./api/users.js";
 
 import { initIO } from "./socket-nvs.js";
 
-// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-// ⭐ NEW: Dashboard Worker + Dashboard Routes
-// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+import VisualizerScanner from "./models/VisualizerScanner.js";
+
 import runDashboardWorker from "./D-board/d-aggregator.js";
 import dashboardRoutes from "./api/d-board.js";
-// <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 
 // -----------------------------------------------------
@@ -57,14 +55,7 @@ app.use("/api/logs-status", logsStatusRoute);
 app.use("/api/usb", usbRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
-
-// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-// ⭐ NEW DASHBOARD API ENDPOINTS
-// /api/dashboard → full snapshot
-// /api/dashboard/summary → summary only
-// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 app.use("/api/dashboard", dashboardRoutes);
-// <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
 app.get("/api/auth/debug", (req, res) =>
   res.json({ msg: "AUTH ROUTES ACTIVE" })
@@ -91,7 +82,8 @@ initIO(io);
 
 const logPath = path.join(process.cwd(), "agent_data_log.json");
 
-global.ACTIVE_AGENTS = {}; // Map agentId -> socketId
+global.ACTIVE_AGENTS = {}; 
+global.ADMIN_SOCKET = null;   // ⭐ Admin auto-detection
 
 
 // -----------------------------------------------------
@@ -112,9 +104,13 @@ io.on("connection", (socket) => {
     global.ACTIVE_AGENTS[agentId] = socket.id;
   });
 
-  // RAW NETWORK SCAN
+  // RAW NETWORK SCAN → IDENTIFIES ADMIN
   socket.on("network_scan_raw", async (devicesList) => {
     console.log("📡 RAW SCAN RECEIVED:", devicesList?.length);
+
+    // ⭐ This socket is the admin
+    global.ADMIN_SOCKET = socket.id;
+
     await saveNetworkScan(devicesList);
   });
 
@@ -192,9 +188,14 @@ io.on("connection", (socket) => {
     }
   });
 
-  // DISCONNECT
-  socket.on("disconnect", (reason) => {
+
+  // -----------------------------------------------------
+  // UPDATED DISCONNECT HANDLER (admin disconnects → wipe scanner)
+  // -----------------------------------------------------
+  socket.on("disconnect", async (reason) => {
     console.log(`⚠️ Agent disconnected: ${socket.id} (${reason})`);
+
+    // Remove from active agents
     for (const [agentId, id] of Object.entries(global.ACTIVE_AGENTS)) {
       if (id === socket.id) {
         delete global.ACTIVE_AGENTS[agentId];
@@ -202,8 +203,33 @@ io.on("connection", (socket) => {
         break;
       }
     }
+
+    // ⭐ If ADMIN disconnected → wipe VisualizerScanner
+    if (socket.id === global.ADMIN_SOCKET) {
+      console.log("🧹 Admin disconnected → clearing VisualizerScanner...");
+      await VisualizerScanner.deleteMany({});
+      global.ADMIN_SOCKET = null;
+      console.log("🧼 VisualizerScanner wiped.");
+    }
   });
 });
+
+
+// -----------------------------------------------------
+// VISUALIZER UPDATE LOOP (Updated)
+// -----------------------------------------------------
+setInterval(async () => {
+  if (!global.ADMIN_SOCKET) {
+    console.log("⏭️ Admin offline → skipping visualizer update");
+    return;
+  }
+
+  try {
+    await runVisualizerUpdate();
+  } catch (err) {
+    console.error("Visualizer update error:", err);
+  }
+}, 3500);
 
 
 // -----------------------------------------------------
@@ -246,17 +272,10 @@ async function start() {
     await connectMongo(config.mongo_uri);
     console.log("✅ MongoDB connected");
 
-    // Seed default users
     await seedUsers();
 
-    setInterval(runVisualizerUpdate, 3500);
-
-    // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-    // ⭐ START DASHBOARD WORKER AFTER MONGO CONNECTION
-    // Runs every 1.5 seconds (adjustable)
     runDashboardWorker(4000);
     console.log("📊 Dashboard Worker running...");
-    // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     server.listen(config.socket_port || 5000, "0.0.0.0", () =>
       console.log(
