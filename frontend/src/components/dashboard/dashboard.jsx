@@ -85,7 +85,7 @@ const Dashboard = () => {
     <div className="dashboard">
       <Sidebar />
       <div className="dashboard-container">
-
+        
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between" }}>
           <h1 className="dashboard-title">Network & Device Overview</h1>
@@ -118,6 +118,38 @@ const Dashboard = () => {
           </div>
         </div>
 
+        {/* ================================
+            ALL DEVICES TABLE
+        ================================= */}
+        <div className="table-container">
+          <h2>All Devices</h2>
+          <table className="activity-table">
+            <thead>
+              <tr>
+                <th>IP</th>
+                <th>Hostname</th>
+                <th>Agent</th>
+                <th>CPU</th>
+                <th>RAM</th>
+                <th>OS</th>
+                <th>Detected At</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allDevices.map((d) => (
+                <tr key={d.ip}>
+                  <td>{d.ip}</td>
+                  <td>{d.hostname || "-"}</td>
+                  <td>{d.noAgent ? "No" : "Yes"}</td>
+                  <td>{formatCPU(d.cpu)}</td>
+                  <td>{formatRAM(d.memory)}</td>
+                  <td>{formatOS(d.os)}</td>
+                  <td>{formatTime(d.timestamp || d.createdAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         {/* ================================
             ACTIVE AGENTS TABLE
@@ -204,7 +236,7 @@ const Dashboard = () => {
               {unknownDevices.map((d) => (
                 <tr key={d.ip}>
                   <td>{d.ip}</td>
-                  <td>{formatTime(d.createdAt)}</td>
+                  <td>{formatTime(d.timestamp)}</td>
                 </tr>
               ))}
             </tbody>
