@@ -3,6 +3,7 @@
 import VisualizerData from "../models/VisualizerData.js";
 import SystemInfo from "../models/SystemInfo.js";
 import Dashboard from "../models/Dashboard.js";
+import Agent from "../models/Agent.js";
 
 // -----------------------------------------
 // Helper: Parse timestamps safely
@@ -43,134 +44,102 @@ function extractIPs(sys) {
 async function runDashboardWorker(interval = 4500) {
   console.log(`📊 Dashboard Worker running every ${interval}ms`);
 
-  const ROUTER_ENDINGS = [1, 250, 253, 254];
-  const ACTIVE_TIMEOUT = 15000; // 15 sec timeout for active agents
+  const routerEndings = [1, 250, 253, 254];
 
   const loop = async () => {
     try {
-      const vizRaw = await VisualizerData.find({}).lean();
+      // 1. Fetch Raw Data
+      const agents = await Agent.find({}).lean();
       const sysRaw = await SystemInfo.find({}).lean();
+      const vizRaw = await VisualizerData.find({}).lean();
 
-      if (!vizRaw.length && !sysRaw.length) {
-        console.log("📭 No data yet — skipping");
-        return;
-      }
+      // 2. Map System Info by AgentId
+      const sysByAgentId = {};
+      sysRaw.forEach((sys) => {
+        if (sys.agentId) sysByAgentId[sys.agentId] = sys;
+      });
 
-      // -----------------------------------------
-      // Latest VisualizerData per IP
-      // -----------------------------------------
-      const latest = {};
-      vizRaw.forEach((d) => {
-        if (!d.ip) return;
+      // 3. Classify Agents (Active vs Inactive) using Agent.status
+      const activeAgents = [];
+      const inactiveAgents = [];
 
-        const existing = latest[d.ip];
-        const newT = parseDate(d.createdAt || d.timestamp);
-        const oldT = existing ? parseDate(existing.createdAt || existing.timestamp) : null;
+      agents.forEach((agent) => {
+        const sys = sysByAgentId[agent.agentId] || {};
+        const sysData = sys.data || {};
 
-        if (!existing || (newT && oldT && newT > oldT) || (newT && !oldT)) {
-          latest[d.ip] = d;
+        // Merge agent + system info
+        const richAgent = {
+          agentId: agent.agentId,
+          ip: agent.ip || sysData.ip || "unknown",
+          hostname: sysData.hostname || "Unknown",
+          status: agent.status || "offline",
+          lastSeen: agent.lastSeen,
+          cpu: sysData.cpu,
+          memory: sysData.memory,
+          os: sysData.os_type,
+          system: sysData
+        };
+
+        if (agent.status === 'online') {
+          activeAgents.push(richAgent);
+        } else {
+          inactiveAgents.push(richAgent);
         }
       });
 
-      const visualizerData = Object.values(latest);
+      // 4. Build "All Devices" (Union of Agents & Scanned Devices)
+      //    Key: IP Address
+      const deviceMap = new Map();
 
-      // -----------------------------------------
-      // Build SystemInfo map by IP
-      // -----------------------------------------
-      const sysByIP = {};
-      sysRaw.forEach((s) => {
-        extractIPs(s).forEach((ip) => {
-          sysByIP[ip] = s;
-        });
+      // Add all agents first (they are authoritative)
+      [...activeAgents, ...inactiveAgents].forEach(agent => {
+        if (agent.ip && agent.ip !== 'unknown') {
+          deviceMap.set(agent.ip, {
+            ...agent,
+            source: 'agent',
+            noAgent: false
+          });
+        }
       });
 
-      const now = Date.now();
+      // Merge Visualizer Data (Scanner)
+      // Only add if IP doesn't exist (unless it provides useful metadata, but Agent data is usually richer)
+      // If it exists, we stick with the Agent record but maybe mark it as scanned
 
-      // -----------------------------------------
-      // ACTIVE AGENTS = Recent SystemInfo + VisualizerData
-      // -----------------------------------------
-      const activeAgents = sysRaw
-        .filter((s) => {
-          const lastSeen = new Date(s.timestamp).getTime();
-          const isFresh = now - lastSeen <= ACTIVE_TIMEOUT;
+      const routers = [];
+      const unknownDevices = [];
 
-          const ips = extractIPs(s);
-          const seenInViz = ips.some((ip) =>
-            visualizerData.some((v) => v.ip === ip && !v.noAgent)
-          );
+      vizRaw.forEach(scan => {
+        if (!scan.ip) return;
+        const ip = scan.ip;
 
-          return isFresh && seenInViz;
-        })
-        .map((s) => {
-          const ip = extractIPs(s)[0];
-          const viz = visualizerData.find((v) => v.ip === ip) || {};
-
-          return {
-            ...viz,
-            system: s.data,
-            cpu: s.data.cpu,
-            memory: s.data.memory,
-            os: s.data.os_type,
-            lastSeen: s.timestamp,
+        if (deviceMap.has(ip)) {
+          // Device is an agent, do nothing (Agent info > Scan info)
+        } else {
+          // Device is NOT an agent (Unmanaged)
+          const device = {
+            ip: scan.ip,
+            hostname: scan.hostname || "Unknown",
+            mac: scan.mac || "Unknown",
+            vendor: scan.vendor || "Unknown",
+            createdAt: scan.createdAt || scan.timestamp,
+            noAgent: true,
+            source: 'scanner'
           };
-        });
 
-      // -----------------------------------------
-      // INACTIVE AGENTS = SystemInfo exists, but expired OR not in visualizer
-      // -----------------------------------------
-      const inactiveAgents = sysRaw.filter((s) => {
-        const lastSeen = new Date(s.timestamp).getTime();
-        const expired = now - lastSeen > ACTIVE_TIMEOUT;
+          deviceMap.set(ip, device);
 
-        const ips = extractIPs(s);
-        const seenInViz = ips.some((ip) =>
-          visualizerData.some((v) => v.ip === ip && !v.noAgent)
-        );
-
-        return expired || !seenInViz;
+          // Check if Router
+          const lastOctet = Number(ip.split('.').pop());
+          if (routerEndings.includes(lastOctet)) {
+            routers.push(device);
+          } else {
+            unknownDevices.push(device);
+          }
+        }
       });
 
-      const inactiveAsDevices = inactiveAgents.map((s) => {
-        const ip = extractIPs(s)[0];
-        return {
-          ip,
-          hostname: s.data.hostname || "Unknown",
-          agentId: s.agentId,
-          noAgent: false,
-          cpu: s.data.cpu,
-          memory: s.data.memory,
-          os: s.data.os_type,
-          timestamp: s.timestamp,
-          system: s.data,
-        };
-      });
-
-      // -----------------------------------------
-      // Unknown unmanaged visualizer devices
-      // -----------------------------------------
-      const unmanaged = visualizerData.filter((d) => d.noAgent === true);
-
-      const routers = unmanaged.filter((d) => {
-        const last = Number(d.ip.split(".")[3]);
-        const subnet = d.ip.split(".").slice(0, 3).join(".");
-        const agentSubnets = sysRaw.map((s) =>
-          extractIPs(s)[0]?.split(".").slice(0, 3).join(".")
-        );
-
-        return ROUTER_ENDINGS.includes(last) && agentSubnets.includes(subnet);
-      });
-
-      const unknownDevices = unmanaged.filter(
-        (d) => !routers.some((r) => r.ip === d.ip)
-      );
-
-      // -----------------------------------------
-      // Final ALL DEVICES = visualizer devices (except routers) + inactive agents
-      // -----------------------------------------
-      const allDevices = [
-        ...visualizerData.filter((d) => !routers.some((r) => r.ip === d.ip)),
-        ...inactiveAsDevices,
-      ];
+      const allDevices = Array.from(deviceMap.values());
 
       // -----------------------------------------
       // FINAL SNAPSHOT

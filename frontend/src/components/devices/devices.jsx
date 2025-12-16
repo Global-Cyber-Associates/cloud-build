@@ -92,11 +92,8 @@ const Devices = () => {
 
         <div className="device-list">
           {agents.map((agent) => {
-            const statusFromLogs = statusMap[agent.agentId];
-            const ipFromVisualizer = visualizerMap[agent.agentId];
-            const isOnline =
-              statusFromLogs === "online" ||
-              (ipFromVisualizer && ipFromVisualizer.trim() !== "");
+            // ⭐ NEW: TRUST BACKEND STATUS
+            const isOnline = agent.status === "online";
             const statusLabel = isOnline ? "Online" : "Offline";
 
             return (

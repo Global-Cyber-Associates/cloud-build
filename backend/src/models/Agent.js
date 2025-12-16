@@ -6,6 +6,7 @@ const AgentSchema = new mongoose.Schema({
   socketId: { type: String },
   ip: { type: String },
   lastSeen: { type: Date, default: Date.now },
+  status: { type: String, default: "offline" },
 });
 
 export default mongoose.model("Agent", AgentSchema);

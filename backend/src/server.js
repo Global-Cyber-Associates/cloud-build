@@ -24,6 +24,7 @@ import logsStatusRoute from "./api/logs.js";
 
 import { isRouterIP } from "./utils/networkHelpers.js";
 import LogsStatus from "./models/Log.js";
+import Agent from "./models/Agent.js";
 import authRoutes from "./api/auth.js";
 import userRoutes from "./api/users.js";
 
@@ -82,7 +83,7 @@ initIO(io);
 
 const logPath = path.join(process.cwd(), "agent_data_log.json");
 
-global.ACTIVE_AGENTS = {}; 
+global.ACTIVE_AGENTS = {};
 global.ADMIN_SOCKET = null;   // ⭐ Admin auto-detection
 
 
@@ -98,10 +99,28 @@ io.on("connection", (socket) => {
   console.log(`🔌 Agent connected: ${socket.id} (${ip})`);
 
   // AGENT REGISTRATION
-  socket.on("register_agent", (agentId) => {
+  socket.on("register_agent", async (agentId) => {
     if (!agentId) return;
     console.log("🆔 Agent registered:", agentId, "socket:", socket.id);
     global.ACTIVE_AGENTS[agentId] = socket.id;
+
+    // ⭐ MARK ONLINE
+    try {
+      await Agent.findOneAndUpdate(
+        { agentId },
+        {
+          $set: {
+            status: "online",
+            lastSeen: new Date(),
+            socketId: socket.id,
+            ip: ip
+          }
+        },
+        { upsert: true }
+      );
+    } catch (err) {
+      console.error("❌ Failed to mark agent online:", err);
+    }
   });
 
   // RAW NETWORK SCAN → IDENTIFIES ADMIN
@@ -200,6 +219,16 @@ io.on("connection", (socket) => {
       if (id === socket.id) {
         delete global.ACTIVE_AGENTS[agentId];
         console.log(`🗑️ Removed offline agent: ${agentId}`);
+
+        // ⭐ MARK OFFLINE
+        try {
+          await Agent.findOneAndUpdate(
+            { agentId },
+            { $set: { status: "offline", lastSeen: new Date() } }
+          );
+        } catch (err) {
+          console.error("❌ Failed to mark agent offline:", err);
+        }
         break;
       }
     }
