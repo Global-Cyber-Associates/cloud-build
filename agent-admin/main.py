@@ -208,6 +208,20 @@ def run_scans():
 # MAIN ENTRY (NO FILE CREATION)
 # ==========================================================
 if __name__ == "__main__":
+    import ctypes
+    
+    # SINGLE INSTANCE CHECK
+    # Mutex name must be unique per agent type
+    mutex_name = "Global\\VisusAgentAdminMutex"
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+    last_error = ctypes.windll.kernel32.GetLastError()
+    
+    if last_error == 183:  # ERROR_ALREADY_EXISTS
+        safe_print("[STARTUP] Agent is already running.")
+        # Show Alert Box
+        ctypes.windll.user32.MessageBoxW(0, "Agent is already running!", "Agent Error", 0x10 | 0x1000) # MB_ICONHAND | MB_SYSTEMMODAL
+        sys.exit(0)
+
     safe_print("=== ADMIN AGENT START ===")
 
     # socket thread
