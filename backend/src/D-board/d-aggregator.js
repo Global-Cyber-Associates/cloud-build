@@ -78,7 +78,8 @@ async function runDashboardWorker(interval = 4500) {
           memory: sysData.memory,
           os: sysData.os_type,
           system: sysData,
-          mac: agent.mac || sysData.mac || null  // ⭐ NEW: Include MAC
+          mac: agent.mac || sysData.mac || null,  // ⭐ NEW: Include MAC
+          timestamp: agent.lastSeen // ⭐ NEW: Populate timestamp for "Detected At"
         };
 
         if (agent.status === 'online') {
@@ -160,6 +161,7 @@ async function runDashboardWorker(interval = 4500) {
           mac: scan.mac || null,
           vendor: scan.vendor || "Unknown",
           createdAt: scan.createdAt || scan.timestamp,
+          timestamp: scan.createdAt || scan.timestamp, // ⭐ ADDED for "Detected At"
         };
 
         addOrUpdateDevice(device, false);
