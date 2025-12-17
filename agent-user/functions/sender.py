@@ -23,7 +23,7 @@ AGENT_ID = os.getenv("AGENT_ID", platform.node())
 # -----------------------------------------------------------
 sio = socketio.Client(
     reconnection=True,
-    reconnection_attempts=5,
+    reconnection_attempts=0,
     reconnection_delay=3
 )
 

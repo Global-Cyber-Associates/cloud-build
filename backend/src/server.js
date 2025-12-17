@@ -24,12 +24,14 @@ import logsStatusRoute from "./api/logs.js";
 
 import { isRouterIP } from "./utils/networkHelpers.js";
 import LogsStatus from "./models/Log.js";
+import Agent from "./models/Agent.js";
 import authRoutes from "./api/auth.js";
 import userRoutes from "./api/users.js";
 
 import { initIO } from "./socket-nvs.js";
 
 import VisualizerScanner from "./models/VisualizerScanner.js";
+import VisualizerData from "./models/VisualizerData.js"; // ⭐ NEW: Import VisualizerData
 
 import runDashboardWorker from "./D-board/d-aggregator.js";
 import dashboardRoutes from "./api/d-board.js";
@@ -82,7 +84,7 @@ initIO(io);
 
 const logPath = path.join(process.cwd(), "agent_data_log.json");
 
-global.ACTIVE_AGENTS = {}; 
+global.ACTIVE_AGENTS = {};
 global.ADMIN_SOCKET = null;   // ⭐ Admin auto-detection
 
 
@@ -98,10 +100,28 @@ io.on("connection", (socket) => {
   console.log(`🔌 Agent connected: ${socket.id} (${ip})`);
 
   // AGENT REGISTRATION
-  socket.on("register_agent", (agentId) => {
+  socket.on("register_agent", async (agentId) => {
     if (!agentId) return;
     console.log("🆔 Agent registered:", agentId, "socket:", socket.id);
     global.ACTIVE_AGENTS[agentId] = socket.id;
+
+    // ⭐ MARK ONLINE
+    try {
+      await Agent.findOneAndUpdate(
+        { agentId },
+        {
+          $set: {
+            status: "online",
+            lastSeen: new Date(),
+            socketId: socket.id,
+            ip: ip
+          }
+        },
+        { upsert: true }
+      );
+    } catch (err) {
+      console.error("❌ Failed to mark agent online:", err);
+    }
   });
 
   // RAW NETWORK SCAN → IDENTIFIES ADMIN
@@ -145,6 +165,12 @@ io.on("connection", (socket) => {
           message: "Invalid payload format",
         });
         return;
+      }
+
+      // ⭐ Re-register if missing (Server Restart handling)
+      if (!global.ACTIVE_AGENTS[payload.agentId]) {
+        global.ACTIVE_AGENTS[payload.agentId] = socket.id;
+        console.log(`♻️ Auto-registered agent on data: ${payload.agentId}`);
       }
 
       payload.ip = ip;
@@ -200,16 +226,30 @@ io.on("connection", (socket) => {
       if (id === socket.id) {
         delete global.ACTIVE_AGENTS[agentId];
         console.log(`🗑️ Removed offline agent: ${agentId}`);
+
+        // ⭐ MARK OFFLINE
+        try {
+          await Agent.findOneAndUpdate(
+            { agentId },
+            { $set: { status: "offline", lastSeen: new Date() } }
+          );
+        } catch (err) {
+          console.error("❌ Failed to mark agent offline:", err);
+        }
         break;
       }
     }
 
-    // ⭐ If ADMIN disconnected → wipe VisualizerScanner
+    // ⭐ If ADMIN disconnected → wipe VisualizerScanner & VisualizerData
     if (socket.id === global.ADMIN_SOCKET) {
       console.log("🧹 Admin disconnected → clearing VisualizerScanner...");
       await VisualizerScanner.deleteMany({});
+
+      console.log("🧹 Admin disconnected → clearing VisualizerData (Persistent)...");
+      await VisualizerData.deleteMany({});
+
       global.ADMIN_SOCKET = null;
-      console.log("🧼 VisualizerScanner wiped.");
+      console.log("🧼 VisualizerScanner & VisualizerData wiped.");
     }
   });
 });
@@ -271,6 +311,12 @@ async function start() {
   try {
     await connectMongo(config.mongo_uri);
     console.log("✅ MongoDB connected");
+
+    // ⭐ STARTUP CLEANUP: Wipe old scan data
+    console.log("🧹 Clearing stale scanner data...");
+    await VisualizerScanner.deleteMany({});
+    await VisualizerData.deleteMany({});
+    console.log("✨ Visualizer collections wiped for fresh start.");
 
     await seedUsers();
 

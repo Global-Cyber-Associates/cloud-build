@@ -85,7 +85,7 @@ const Dashboard = () => {
     <div className="dashboard">
       <Sidebar />
       <div className="dashboard-container">
-        
+
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between" }}>
           <h1 className="dashboard-title">Network & Device Overview</h1>
@@ -118,44 +118,13 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* ================================
-            ALL DEVICES TABLE
-        ================================= */}
-        <div className="table-container">
-          <h2>All Devices</h2>
-          <table className="activity-table">
-            <thead>
-              <tr>
-                <th>IP</th>
-                <th>Hostname</th>
-                <th>Agent</th>
-                <th>CPU</th>
-                <th>RAM</th>
-                <th>OS</th>
-                <th>Detected At</th>
-              </tr>
-            </thead>
-            <tbody>
-              {allDevices.map((d) => (
-                <tr key={d.ip}>
-                  <td>{d.ip}</td>
-                  <td>{d.hostname || "-"}</td>
-                  <td>{d.noAgent ? "No" : "Yes"}</td>
-                  <td>{formatCPU(d.cpu)}</td>
-                  <td>{formatRAM(d.memory)}</td>
-                  <td>{formatOS(d.os)}</td>
-                  <td>{formatTime(d.timestamp || d.createdAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+
 
         {/* ================================
-            ACTIVE AGENTS TABLE
+            ACTIVE DEVICES TABLE
         ================================= */}
         <div className="table-container">
-          <h2>Active Agents</h2>
+          <h2>Active Devices</h2>
           <table className="activity-table">
             <thead>
               <tr>
@@ -185,10 +154,10 @@ const Dashboard = () => {
         </div>
 
         {/* ================================
-            INACTIVE AGENTS TABLE
+            INACTIVE DEVICES TABLE
         ================================= */}
         <div className="table-container">
-          <h2>Inactive Agents</h2>
+          <h2>Inactive Devices</h2>
           <table className="activity-table">
             <thead>
               <tr>
@@ -203,15 +172,14 @@ const Dashboard = () => {
             </thead>
             <tbody>
               {inactiveAgents.map((a) => {
-                const sys = a.data || {};
                 return (
-                  <tr key={sys.ip}>
+                  <tr key={a.ip}>
                     <td>{a.agentId || "-"}</td>
-                    <td>{sys.hostname || "-"}</td>
-                    <td>{sys.ip}</td>
-                    <td>{formatCPU(sys.cpu)}</td>
-                    <td>{formatRAM(sys.memory)}</td>
-                    <td>{formatOS(sys.os_type)}</td>
+                    <td>{a.hostname || "-"}</td>
+                    <td>{a.ip}</td>
+                    <td>{formatCPU(a.cpu)}</td>
+                    <td>{formatRAM(a.memory)}</td>
+                    <td>{formatOS(a.os)}</td>
                     <td>{formatTime(a.timestamp)}</td>
                   </tr>
                 );

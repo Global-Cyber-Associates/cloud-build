@@ -87,22 +87,41 @@ def tcp_probe(ip):
 
 def read_arp_table(cidr):
     try:
+        # Run arp -a
         out = subprocess.check_output("arp -a", shell=True, text=True)
     except Exception:
-        return set()
+        return {}
+
     net = ipaddress.ip_network(cidr, False)
-    res = set()
+    res = {}
+    
+    # Simple regex for MAC address (Windows/Linux variants)
+    # Matches XX-XX-XX-XX-XX-XX or XX:XX:XX:XX:XX:XX
+    import re
+    mac_regex = re.compile(r"([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})")
+
     for line in out.splitlines():
         parts = line.strip().split()
         if not parts:
             continue
-        ip = parts[0]
+            
+        ip_str = parts[0]
         try:
-            a = ipaddress.IPv4Address(ip)
+            # Check if valid IP in our subnet
+            a = ipaddress.IPv4Address(ip_str)
             if a in net and not a.is_multicast and not a.is_loopback and a != net.broadcast_address:
-                res.add(str(a))
+                # Search for MAC in the line
+                mac_match = mac_regex.search(line)
+                if mac_match:
+                    # Normalize MAC to xx:xx:xx:xx:xx:xx
+                    mac = mac_match.group(0).replace("-", ":").lower()
+                    res[str(a)] = mac
+                else:
+                    # IP found but no MAC? (rare in arp -a, but store as None)
+                    res[str(a)] = None
         except:
             continue
+            
     return res
 
 def neighbors_of(ip_str, cidr, rng=NEIGHBOR_RANGE):
@@ -137,8 +156,19 @@ def initial_full_scan(cidr, local_ip):
                     alive_tcp.add(futures[fut])
             except:
                 pass
-    combined = set(arp_alive) | alive_tcp
-    combined.add(local_ip)
+    # Merge ARP (ip->mac) and TCP (ip->None)
+    # Result: {ip: mac or None}
+    combined = {}
+    for ip, mac in arp_alive.items():
+        combined[ip] = mac
+    for ip in alive_tcp:
+        if ip not in combined:
+            combined[ip] = None
+    
+    # Add local
+    if local_ip not in combined:
+        combined[local_ip] = None
+        
     return combined
 
 def incremental_scan(previous_alive, cidr, local_ip):
@@ -164,8 +194,17 @@ def incremental_scan(previous_alive, cidr, local_ip):
                     alive_tcp.add(futures[fut])
             except:
                 pass
-    combined = set(arp_alive) | alive_tcp
-    combined.add(local_ip)
+    # Merge
+    combined = {}
+    for ip, mac in arp_alive.items():
+        combined[ip] = mac
+    for ip in alive_tcp:
+        if ip not in combined:
+            combined[ip] = None
+            
+    if local_ip not in combined:
+        combined[local_ip] = None
+        
     return combined
 
 def main():
@@ -179,18 +218,27 @@ def main():
     try:
         prev = initial_full_scan(cidr, local_ip)
     except:
-        prev = {local_ip}
-    # emit first list
-    devices = [{"ip": ip, "mac": None, "vendor": None} for ip in sorted(prev, key=lambda s: tuple(map(int, s.split('.'))))]
+        prev = {local_ip: None}
+        
+    # emit first list (prev is {ip: mac})
+    # sort by IP
+    sorted_ips = sorted(prev.keys(), key=lambda s: tuple(map(int, s.split('.'))))
+    devices = [{"ip": ip, "mac": prev[ip], "vendor": None} for ip in sorted_ips]
+    
     print(json.dumps(devices), flush=True)
+    
     # loop
     while True:
         start = time.time()
         try:
-            alive = incremental_scan(prev, cidr, local_ip)
+            # alive is {ip: mac}
+            alive = incremental_scan(prev.keys(), cidr, local_ip)
         except:
             alive = prev
-        devs = [{"ip": ip, "mac": None, "vendor": None} for ip in sorted(alive, key=lambda s: tuple(map(int, s.split('.'))))]
+            
+        sorted_ips = sorted(alive.keys(), key=lambda s: tuple(map(int, s.split('.'))))
+        devs = [{"ip": ip, "mac": alive[ip], "vendor": None} for ip in sorted_ips]
+        
         print(json.dumps(devs), flush=True)
         prev = alive
         elapsed = time.time() - start

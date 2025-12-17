@@ -33,6 +33,9 @@ export async function saveAgentData(payload) {
             socketId: payload.socket_id || null,
             ip: payload.ip || "unknown",
             lastSeen: new Date(),
+            status: "online", // ⭐ NEW: Auto-mark online when sending data
+            // Extract MAC from top-level or data
+            ...((payload.mac || (payload.data && payload.data.mac)) && { mac: payload.mac || payload.data.mac })
           },
         },
         { upsert: true, new: true }

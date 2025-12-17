@@ -27,14 +27,13 @@ IOCTL_STORAGE_EJECT_MEDIA   = 0x2D4808
 file = __file__
 
 # --- FIX: Corrected datadir() implementation ---
-def datadir():
+def _data_dir():
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
 # --- FIX: Add missing _data_dir() used by CACHE_FILE ---
-def _data_dir():
-    return datadir()
+
 
 # Cache file path
 CACHE_FILE = os.path.join(_data_dir(), "usb_cache.json")

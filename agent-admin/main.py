@@ -208,23 +208,46 @@ def run_scans():
 # MAIN ENTRY (NO FILE CREATION)
 # ==========================================================
 if __name__ == "__main__":
+    import ctypes
+    
+    # SINGLE INSTANCE CHECK
+    # Mutex name must be unique per agent type
+    mutex_name = "Global\\VisusAgentAdminMutex"
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+    last_error = ctypes.windll.kernel32.GetLastError()
+    
+    if last_error == 183:  # ERROR_ALREADY_EXISTS
+        safe_print("[STARTUP] Agent is already running.")
+        # Show Alert Box
+        ctypes.windll.user32.MessageBoxW(0, "Agent is already running!", "Agent Error", 0x10 | 0x1000) # MB_ICONHAND | MB_SYSTEMMODAL
+        sys.exit(0)
+
     safe_print("=== ADMIN AGENT START ===")
 
     # socket thread
     def start_socket():
-        try:
-            connect_socket()
-            @sio.event
-            def connect():
-                safe_print("[SOCKET CONNECTED]")
-            @sio.event
-            def disconnect():
-                safe_print("[SOCKET DISCONNECTED]")
-            sio.wait()
-        except Exception as e:
-            safe_print("[SOCKET ERROR]", e)
-            while True:
-                time.sleep(3)
+        while True:
+            try:
+                safe_print("[SOCKET] connecting...")
+                connect_socket()
+                
+                # If we are here, we might be connected or just returned. 
+                # We need to keep the thread alive and listening or retrying.
+                # connect_socket() in sender.py is a one-off attempt usually, 
+                # but if we want to ensure we stay connected or wait:
+                
+                if sio.connected:
+                   safe_print("[SOCKET] Connected.")
+                   sio.wait() # This blocks until disconnect
+                   safe_print("[SOCKET] socket.wait() returned (disconnected).")
+                else:
+                   safe_print("[SOCKET] Not connected, retrying in 5s...")
+                   
+            except Exception as e:
+                safe_print("[SOCKET ERROR]", e)
+            
+            # safeguard sleep before retry
+            time.sleep(5)
 
     threading.Thread(target=start_socket, daemon=False).start()
 

@@ -59,23 +59,23 @@ def start_usb_monitor():
 # SOCKET THREAD
 # ============================
 def start_socket():
-    safe_print("[SOCKET] Starting socket...")
-    try:
-        connect_socket()
+    while True:
+        try:
+            safe_print("[SOCKET] connecting...")
+            connect_socket()
+            
+            if sio.connected:
+                safe_print("[SOCKET] Connected.")
+                sio.wait()
+                safe_print("[SOCKET] socket.wait() returned (disconnected).")
+            else:
+                safe_print("[SOCKET] Not connected, retrying in 5s...")
 
-        @sio.event
-        def connect():
-            safe_print("[SOCKET CONNECTED]")
-
-        @sio.event
-        def disconnect():
-            safe_print("[SOCKET DISCONNECTED]")
-
-        sio.wait()
-
-    except Exception as e:
-        safe_print("[SOCKET ERROR]", e)
-        traceback.print_exc()
+        except Exception as e:
+            safe_print("[SOCKET ERROR]", e)
+            traceback.print_exc()
+        
+        time.sleep(5)
 
 
 # ============================
@@ -105,6 +105,20 @@ def run_scans():
 # ENTRY POINT
 # ============================
 if __name__ == "__main__":
+    import ctypes
+    
+    # SINGLE INSTANCE CHECK
+    # Mutex name must be unique per agent type
+    mutex_name = "Global\\VisusAgentUserMutex"
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+    last_error = ctypes.windll.kernel32.GetLastError()
+    
+    if last_error == 183:  # ERROR_ALREADY_EXISTS
+        safe_print("[STARTUP] Agent is already running.")
+        # Show Alert Box
+        ctypes.windll.user32.MessageBoxW(0, "Agent is already running!", "Agent Error", 0x10 | 0x1000) # MB_ICONHAND | MB_SYSTEMMODAL
+        sys.exit(0)
+
     safe_print("=== USER AGENT STARTED ===")
 
     # socket thread
