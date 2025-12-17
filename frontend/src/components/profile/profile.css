@@ -1,0 +1,79 @@
+/* Page wrapper to avoid sidebar overlap */
+.page-wrapper {
+  padding: 30px;
+  margin-left: 260px; /* sidebar width */
+  background: #0b274b; /* match app background */
+  min-height: 100vh;
+}
+
+@media (max-width: 768px) {
+  .page-wrapper {
+    margin-left: 0;
+  }
+}
+
+/* Profile card */
+.profile-container {
+  max-width: 520px;
+  margin: 0 auto;
+  background: #ffffff; /* white card */
+  color: #1e1e1e; /* DARK TEXT */
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+}
+
+/* Title */
+.profile-container h2 {
+  text-align: center;
+  margin-bottom: 20px;
+  color: #0b274b;
+}
+
+/* Profile rows */
+.profile-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e6e6e6;
+}
+
+.profile-row span {
+  font-size: 14px;
+  color: #555;
+}
+
+.profile-row strong {
+  font-size: 14px;
+  color: #111;
+}
+
+/* Status badges */
+.status-active {
+  color: #27ae60;
+  font-weight: 600;
+}
+
+.status-disabled {
+  color: #c0392b;
+  font-weight: 600;
+}
+
+/* Messages */
+.error-msg {
+  background: #ffe5e5;
+  color: #c0392b;
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.success-msg {
+  background: #e7f9ee;
+  color: #27ae60;
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}

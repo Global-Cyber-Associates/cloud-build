@@ -143,3 +143,51 @@
     margin-left: 0 !important;
   }
 }
+
+.sidebar-logout {
+  margin-top: auto;
+  padding: 15px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.logout-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  color: #fff;
+  padding: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  border-radius: 6px;
+}
+
+.logout-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.sidebar-user {
+  padding: 12px 15px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.user-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.user-email {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.user-role {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1f8ef1;
+}
+

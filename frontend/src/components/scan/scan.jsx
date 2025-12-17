@@ -9,7 +9,12 @@ const backendUrl = import.meta.env.VITE_BACKEND_URL;
 // ----------------------------
 function guessVendorFromMac(mac) {
   if (!mac) return null;
-  const prefix = mac.toLowerCase().replace(/-/g, ":").split(":").slice(0, 3).join(":");
+  const prefix = mac
+    .toLowerCase()
+    .replace(/-/g, ":")
+    .split(":")
+    .slice(0, 3)
+    .join(":");
   const map = {
     "44:65:0d": "Apple, Inc.",
     "54:ea:3a": "Samsung Electronics",
@@ -23,7 +28,16 @@ function guessVendorFromMac(mac) {
 function isMobileVendor(vendor) {
   if (!vendor) return false;
   const s = vendor.toLowerCase();
-  return ["apple", "samsung", "xiaomi", "huawei", "oneplus", "pixel", "realme", "vivo"].some(k => s.includes(k));
+  return [
+    "apple",
+    "samsung",
+    "xiaomi",
+    "huawei",
+    "oneplus",
+    "pixel",
+    "realme",
+    "vivo",
+  ].some((k) => s.includes(k));
 }
 
 // ----------------------------
@@ -42,7 +56,9 @@ const Scan = () => {
   useEffect(() => {
     const fetchPreviousScan = async () => {
       try {
-        const res = await fetch(`${backendUrl.replace(/\/$/, "")}/api/scan/latest`);
+        const res = await fetch(
+          `${backendUrl.replace(/\/$/, "")}/api/scan/latest`
+        );
         if (!res.ok) return;
         const data = await res.json();
         setPreviousScan(data);
@@ -60,7 +76,7 @@ const Scan = () => {
   // ---------------------------------------
   const mapScannerResponseToDevices = (data) => {
     const hosts = data?.result?.hosts || data?.hosts || [];
-    return hosts.map(h => ({
+    return hosts.map((h) => ({
       ips: h.ips || (h.ip ? [h.ip] : []),
       mac: h.mac || null,
       vendor: h.vendor || guessVendorFromMac(h.mac) || "-",
@@ -68,8 +84,8 @@ const Scan = () => {
       _meta: {
         open_ports: h.open_ports || {},
         vuln_flags: h.vuln_flags || [],
-        raw: h
-      }
+        raw: h,
+      },
     }));
   };
 
@@ -101,7 +117,9 @@ const Scan = () => {
       await new Promise((resolve) => setTimeout(resolve, 6000));
 
       // Step 3: Fetch final scan results from backend DB
-      const latestRes = await fetch(`${backendUrl.replace(/\/$/, "")}/api/scan/latest`);
+      const latestRes = await fetch(
+        `${backendUrl.replace(/\/$/, "")}/api/scan/latest`
+      );
       if (!latestRes.ok) throw new Error("No scan results saved yet");
 
       const latest = await latestRes.json();
@@ -117,7 +135,6 @@ const Scan = () => {
       }
 
       setPreviousScan(latest);
-
     } catch (err) {
       console.error("Scan error:", err);
       setError(err.message || "Failed to fetch scan results");
@@ -149,11 +166,21 @@ const Scan = () => {
               <tr key={index}>
                 <td>
                   {d.ips?.length
-                    ? d.ips.map((ip, i) => <span key={i} className="ip-badge">{ip}</span>)
+                    ? d.ips.map((ip, i) => (
+                        <span key={i} className="ip-badge">
+                          {ip}
+                        </span>
+                      ))
                     : "-"}
                 </td>
                 <td>{d.mac || "-"}</td>
-                <td className={d.vendor && d.vendor !== "-" ? "vendor-known" : "vendor-unknown"}>
+                <td
+                  className={
+                    d.vendor && d.vendor !== "-"
+                      ? "vendor-known"
+                      : "vendor-unknown"
+                  }
+                >
                   {d.vendor && d.vendor !== "-" ? d.vendor : "-"}
                 </td>
                 <td>
@@ -162,27 +189,36 @@ const Scan = () => {
                   </span>
                 </td>
                 <td>
-                  {d._meta?.open_ports && Object.keys(d._meta.open_ports).length > 0 ? (
+                  {d._meta?.open_ports &&
+                  Object.keys(d._meta.open_ports).length > 0 ? (
                     <div className="ports-cell">
                       {Object.entries(d._meta.open_ports).map(([p, info]) => (
                         <div key={p} className="port-item">
                           <strong>{p}</strong>
-                          {info.banner ? ` — ${info.banner.split("\n")[0].slice(0, 80)}` : ""}
+                          {info.banner
+                            ? ` — ${info.banner.split("\n")[0].slice(0, 80)}`
+                            : ""}
                         </div>
                       ))}
                     </div>
-                  ) : <span>-</span>}
+                  ) : (
+                    <span>-</span>
+                  )}
                 </td>
                 <td>
                   {d._meta?.vuln_flags && d._meta.vuln_flags.length > 0 ? (
                     <ul className="vuln-list">
                       {d._meta.vuln_flags.map((f, i) => (
                         <li key={i}>
-                          {typeof f === "string" ? f : `${f.description} (${f.impact})`}
+                          {typeof f === "string"
+                            ? f
+                            : `${f.description} (${f.impact})`}
                         </li>
                       ))}
                     </ul>
-                  ) : <span>-</span>}
+                  ) : (
+                    <span>-</span>
+                  )}
                 </td>
               </tr>
             ))}
@@ -202,16 +238,19 @@ const Scan = () => {
       <div className="scan-content">
         <h2>Network Vulnerability Scanner (beta v.0)</h2>
         <p className="description">
-          Trigger a live scan to identify connected devices and their potential vulnerabilities.
+          Trigger a live scan to identify connected devices and their potential
+          vulnerabilities.
         </p>
 
-        <button onClick={runScan} disabled={loading}>
+        <button onClick={runScan} disabled={true}>
           {loading ? "Scanning..." : "Run Network Scan"}
         </button>
 
         {loading && (
           <ul className="wave-menu">
-            {Array.from({ length: 9 }).map((_, i) => <li key={i}></li>)}
+            {Array.from({ length: 9 }).map((_, i) => (
+              <li key={i}></li>
+            ))}
           </ul>
         )}
 

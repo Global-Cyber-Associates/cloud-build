@@ -14,11 +14,14 @@ import Scan from "./components/scan/scan.jsx";
 import TaskManager from "./components/devices/Taskmanager/taskmanager.jsx";
 import UsbControl from "./components/usb/usb.jsx";
 import InstalledApps from "./components/devices/installedApps/installedapps.jsx";
+import ChangePassword from "./components/profile/ChangePassword.jsx";
+import Profile from "./components/profile/Profile.jsx";
 
 // AUTH & ADMIN
 import Login from "./components/navigation/Login.jsx";
 import CreateUser from "./components/admin/CreateUser.jsx";
 import AdminDashboard from "./components/admin/AdminDashboard.jsx";
+import ManageUsers from "./components/admin/ManageUsers.jsx";
 // import ManageUsers from "./components/admin/ManageUsers.jsx"; // create later
 
 // PUBLIC PAGES
@@ -54,10 +57,8 @@ function App() {
       <Routes>
         {/* LOGIN */}
         <Route path="/login" element={<Login />} />
-
         {/* PUBLIC DOWNLOAD PAGE */}
         <Route path="/download" element={<Download />} />
-
         {/* USER DASHBOARD */}
         <Route
           path="/dashboard"
@@ -67,7 +68,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         {/* ADMIN DASHBOARD */}
         <Route
           path="/admin/dashboard"
@@ -79,9 +79,8 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         {/* ADMIN: MANAGE USERS */}
-        {/* <Route
+        <Route
           path="/admin/users"
           element={
             <ProtectedRoute>
@@ -90,8 +89,7 @@ function App() {
               </AdminRoute>
             </ProtectedRoute>
           }
-        /> */}
-
+        />
         {/* ADMIN: CREATE USER */}
         <Route
           path="/admin/create-user"
@@ -103,13 +101,21 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         {/* USER ROUTES */}
         <Route
           path="/visualizer"
           element={
             <ProtectedRoute>
               <Visualizer />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/profile/change-password"
+          element={
+            <ProtectedRoute>
+              <ChangePassword />
             </ProtectedRoute>
           }
         />
@@ -122,7 +128,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/devices/:id"
           element={
@@ -131,7 +136,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/tasks/:id"
           element={
@@ -140,7 +144,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/apps/:id"
           element={
@@ -149,7 +152,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/logs"
           element={
@@ -158,7 +160,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/issues"
           element={
@@ -167,7 +168,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/features"
           element={
@@ -176,7 +176,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/scan"
           element={
@@ -185,12 +184,19 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/usb"
           element={
             <ProtectedRoute>
               <UsbControl />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Profile />
             </ProtectedRoute>
           }
         />

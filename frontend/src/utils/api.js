@@ -1,23 +1,41 @@
 import { getToken } from "./authService";
 
-export async function apiGet(url) {
-  const token = getToken();
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
-  return fetch(url, {
+export async function apiGet(path) {
+  return fetch(`${BACKEND_URL}${path}`, {
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${getToken()}`,
     },
   });
 }
 
-export async function apiPost(url, body) {
-  const token = getToken();
-
-  return fetch(url, {
+export async function apiPost(path, body) {
+  return fetch(`${BACKEND_URL}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${getToken()}`,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function apiDelete(path) {
+  return fetch(`${BACKEND_URL}${path}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${getToken()}`,
+    },
+  });
+}
+
+export async function apiPut(path, body) {
+  return fetch(`${BACKEND_URL}${path}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${getToken()}`,
     },
     body: JSON.stringify(body),
   });
