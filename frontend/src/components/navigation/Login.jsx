@@ -62,7 +62,7 @@ function Login() {
             Login
           </button>
 
-          <div className="download-section">
+          {/* <div className="download-section">
             <button
               type="button"
               className="download-link-btn"
@@ -70,7 +70,7 @@ function Login() {
             >
               Download Agent
             </button>
-          </div>
+          </div> */}
         </form>
       </div>
       <div className="login-footer">© 2025 Global Cyber Associates</div>

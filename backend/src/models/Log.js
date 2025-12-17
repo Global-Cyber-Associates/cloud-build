@@ -3,6 +3,14 @@ import mongoose from "mongoose";
 
 const LogsStatusSchema = new mongoose.Schema(
   {
+    // ⭐ MULTI-TENANT KEY (SCHEMA ONLY)
+    tenantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Tenant",
+      required: true,
+      index: true,
+    },
+
     agents: [
       {
         agentId: String,
@@ -16,10 +24,12 @@ const LogsStatusSchema = new mongoose.Schema(
         lastSeen: Date,
       },
     ],
+
     server: {
       status: String,
       message: String,
     },
+
     unknownDevices: [
       {
         ip: String,
@@ -28,6 +38,7 @@ const LogsStatusSchema = new mongoose.Schema(
         hostname: String,
       },
     ],
+
     usbDevices: [
       {
         agentId: String,
@@ -42,10 +53,15 @@ const LogsStatusSchema = new mongoose.Schema(
         ],
       },
     ],
+
     timestamp: { type: Date, default: Date.now },
   },
-  { versionKey: false }
+  {
+    versionKey: false,
+    timestamps: true,
+  }
 );
 
 // ✅ Prevent model overwrite
-export default mongoose.models.LogsStatus || mongoose.model("LogsStatus", LogsStatusSchema);
+export default mongoose.models.LogsStatus ||
+  mongoose.model("LogsStatus", LogsStatusSchema);

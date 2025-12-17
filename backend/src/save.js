@@ -3,53 +3,71 @@ import SystemInfo from "./models/SystemInfo.js";
 import InstalledApps from "./models/InstalledApps.js";
 import PortScanData from "./models/PortScan.js";
 import TaskInfo from "./models/TaskInfo.js";
-
-// ⭐ Network scanner model
 import VisualizerScanner from "./models/VisualizerScanner.js";
-
-// ⭐ Vulnerability scan model
 import ScanResult from "./models/ScanResult.js";
+import mongoose from "mongoose";
 
+// ⭐ DEFAULT TENANT (fallback for agents)
+const DEFAULT_TENANT_ID = new mongoose.Types.ObjectId(
+  "694114ce93766c317e31ff5a"
+);
 
 // =====================================================
-// ORIGINAL FUNCTION (UNCHANGED)
+// ⭐ RESOLVE AGENT + TENANT
+// =====================================================
+async function resolveAgentAndTenant(payload) {
+  const { agentId } = payload;
+
+  let agent = await Agent.findOne({ agentId });
+
+  if (!agent) {
+    agent = await Agent.create({
+      agentId,
+      tenantId: DEFAULT_TENANT_ID,
+      socketId: payload.socket_id || null,
+      ip: payload.ip || "unknown",
+      lastSeen: new Date(),
+      status: "online",
+      mac: payload.mac || payload.data?.mac || null,
+    });
+  }
+
+  return agent;
+}
+
+// =====================================================
+// ⭐ SAVE AGENT DATA (PHASE-1 SAFE VERSION)
 // =====================================================
 export async function saveAgentData(payload) {
   try {
-    if (!payload || !payload.type || !payload.data || !payload.agentId) {
-      console.error("❌ Invalid payload: missing type, data, or agentId");
+    if (!payload?.type || !payload?.data || !payload?.agentId) {
+      console.error("❌ Invalid payload");
       return;
     }
 
     const { type, agentId, data } = payload;
     const timestamp = payload.timestamp || new Date().toISOString();
 
-    try {
-      await Agent.findOneAndUpdate(
-        { agentId },
-        {
-          $set: {
-            agentId,
-            socketId: payload.socket_id || null,
-            ip: payload.ip || "unknown",
-            lastSeen: new Date(),
-            status: "online", // ⭐ NEW: Auto-mark online when sending data
-            // Extract MAC from top-level or data
-            ...((payload.mac || (payload.data && payload.data.mac)) && { mac: payload.mac || payload.data.mac })
-          },
-        },
-        { upsert: true, new: true }
-      );
-      console.log(`💾 Agent [${agentId}] saved/updated`);
-    } catch (err) {
-      console.error(`❌ Failed to upsert Agent [${agentId}]:`, err);
-      return;
-    }
+    // Resolve agent + tenant
+    const agent = await resolveAgentAndTenant(payload);
+    const tenantId = agent.tenantId;
 
-    if (type === "usb_devices") {
-      console.log("ℹ️ USB data skipped.");
-      return;
-    }
+    // Update agent heartbeat
+    await Agent.findOneAndUpdate(
+      { agentId , tenantId},
+      {
+        $set: {
+          socketId: payload.socket_id || null,
+          ip: payload.ip || "unknown",
+          lastSeen: new Date(),
+          status: "online",
+          mac: payload.mac || payload.data?.mac || null,
+        },
+      }
+    );
+
+    // Skip USB payloads
+    if (type === "usb_devices") return;
 
     let Model;
     switch (type) {
@@ -66,119 +84,113 @@ export async function saveAgentData(payload) {
         Model = TaskInfo;
         break;
       default:
-        console.warn(`⚠️ Unknown data type: ${type}`);
         return;
     }
 
-    const doc = { agentId, timestamp, type, data };
-
-    try {
-      await Model.findOneAndUpdate(
-        { agentId },
-        { $set: doc },
-        { upsert: true, new: true }
-      );
-      console.log(`✅ [${type}] saved for agent ${agentId}`);
-    } catch (err) {
-      console.error(`❌ Failed to save [${type}] for agent ${agentId}:`, err);
-    }
+    // 🔑 IMPORTANT:
+    // We DO NOT filter by tenantId yet
+    // We ONLY write tenantId
+    await Model.findOneAndUpdate(
+      { agentId },
+      {
+        $set: {
+          agentId,
+          tenantId,
+          timestamp,
+          type,
+          data,
+        },
+      },
+      { upsert: true }
+    );
 
   } catch (err) {
-    console.error("❌ Failed to save agent data:", err);
+    console.error("❌ saveAgentData failed:", err);
   }
 }
 
-
-
 // =====================================================
-// ⭐ UPDATED NETWORK SCAN HANDLER (REALTIME SYNC)
+// ⭐ SAVE NETWORK SCAN (PHASE-1 SAFE)
 // =====================================================
-export async function saveNetworkScan(devicesList) {
+export async function saveNetworkScan(
+  devicesList,
+  tenantId = DEFAULT_TENANT_ID
+) {
   try {
-    console.log("📡 saveNetworkScan CALLED. devices =", devicesList?.length);
+    if (!Array.isArray(devicesList)) return;
 
-    if (!Array.isArray(devicesList)) {
-      console.error("❌ network_scan_raw invalid payload");
-      return;
-    }
+    const aliveIPs = devicesList
+      .map((d) => d.ip?.trim())
+      .filter(Boolean);
 
-    // 1️⃣ Extract only the alive IPs from this scan
-    const aliveIPs = devicesList.map(d => d.ip.trim());
-
-    // 2️⃣ REMOVE ALL old/stale IPs not in current scan
+    // NOTE: VisualizerScanner schema must have tenantId later
     await VisualizerScanner.deleteMany({
-      ip: { $nin: aliveIPs }
+      ip: { $nin: aliveIPs },
     });
 
-    // 3️⃣ UPSERT all current alive devices
     for (const dev of devicesList) {
       if (!dev.ip) continue;
-      const ip = dev.ip.trim();
 
       await VisualizerScanner.findOneAndUpdate(
-        { ip },
+        { ip: dev.ip.trim() },
         {
           $set: {
-            ip,
+            ip: dev.ip.trim(),
+            tenantId,
             mac: dev.mac || null,
             vendor: dev.vendor || null,
             ping_only: dev.ping_only ?? true,
             lastSeen: new Date(),
-            updatedAt: new Date(),
-          }
+          },
         },
         { upsert: true }
       );
     }
-
   } catch (err) {
-    console.error("❌ Failed to save network scan:", err);
+    console.error("❌ saveNetworkScan failed:", err);
   }
 }
 
-
-
 // =====================================================
-// ⭐ NEW: SAVE VULNERABILITY SCAN RESULTS
+// ⭐ SAVE VULNERABILITY SCAN (PHASE-1 SAFE)
 // =====================================================
-export async function saveVulnerabilityScan(scanObject) {
+export async function saveVulnerabilityScan(
+  scanObject,
+  tenantId = DEFAULT_TENANT_ID
+) {
   try {
-    console.log("🛡️ saveVulnerabilityScan CALLED.");
+    if (!scanObject?.hosts) return;
 
-    if (!scanObject || !scanObject.hosts) {
-      console.error("❌ Invalid vuln scan payload:", scanObject);
-      return;
-    }
-
-    // Overall impact calculation
-    const impacts = scanObject.hosts.map(h => h.impact_level || "Info");
     const order = ["Info", "Low", "Medium", "High", "Critical"];
+    const impacts = scanObject.hosts.map(
+      (h) => h.impact_level || "Info"
+    );
 
     const overall_impact =
       impacts.length > 0
-        ? impacts.sort((a, b) => order.indexOf(b) - order.indexOf(a))[0]
+        ? impacts.sort(
+            (a, b) => order.indexOf(b) - order.indexOf(a)
+          )[0]
         : "Info";
-
-    const doc = {
-      ok: scanObject.ok,
-      network: scanObject.network,
-      scanned_at: scanObject.scanned_at,
-      duration_seconds: scanObject.duration_seconds,
-      hosts: scanObject.hosts,
-      overall_impact,
-      raw: scanObject,
-      updated_at: new Date(),
-    };
 
     await ScanResult.findOneAndUpdate(
       {},
-      { $set: doc },
-      { upsert: true, new: true }
+      {
+        $set: {
+          tenantId,
+          ok: scanObject.ok,
+          network: scanObject.network,
+          scanned_at: scanObject.scanned_at,
+          duration_seconds: scanObject.duration_seconds,
+          hosts: scanObject.hosts,
+          overall_impact,
+          raw: scanObject,
+          updated_at: new Date(),
+        },
+      },
+      { upsert: true }
     );
-
-    console.log("✅ Vulnerability scan saved to ScanResult.");
-
   } catch (err) {
-    console.error("❌ Failed to save vulnerability scan:", err);
+    console.error("❌ saveVulnerabilityScan failed:", err);
   }
 }
