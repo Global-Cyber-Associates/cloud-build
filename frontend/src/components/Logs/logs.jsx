@@ -1,35 +1,27 @@
 import React, { useEffect, useState } from "react";
-import { io } from "socket.io-client";
+import socket from "../../utils/socket"; 
 import "./logs.css";
 import Sidebar from "../navigation/sidenav.jsx";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
-
-const SOCKET_URL = `${BACKEND_URL}`;
-
 const Logs = () => {
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState(socket.connected);
   const [liveLogs, setLiveLogs] = useState([]);
 
   useEffect(() => {
-    const socket = io(SOCKET_URL, {
-      transports: ["websocket"],
-      reconnectionAttempts: 5,
-      reconnectionDelay: 2000,
-    });
+    // Sync connection state immediately
+    if (socket.connected) {
+       setConnected(true);
+    }
 
-    socket.on("connect", () => {
-      console.log("✅ Connected to socket server");
+    const onConnect = () => {
       setConnected(true);
-    });
+    };
 
-    socket.on("disconnect", () => {
-      console.warn("⚠️ Disconnected from socket server");
+    const onDisconnect = (reason) => {
       setConnected(false);
-    });
+    };
 
-    socket.on("logs_status_update", (data) => {
-      console.log("🧠 Received logs snapshot:", data);
+    const onLogsUpdate = (data) => {
       const timestamp = new Date(data.timestamp).toLocaleString();
       const newLogs = [];
 
@@ -87,11 +79,21 @@ const Logs = () => {
       // ✅ Keep logs short and fresh (max 100)
       setLiveLogs((prev) => {
         const updated = [...newLogs, ...prev];
-        return updated.slice(0, 100); // 🔥 cut off anything beyond 100
+        return updated.slice(0, 100); 
       });
-    });
+    };
 
-    return () => socket.disconnect();
+    // Attach listeners
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("logs_status_update", onLogsUpdate);
+
+    // Cleanup: ONLY remove listeners, DO NOT DISCONNECT
+    return () => {
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("logs_status_update", onLogsUpdate);
+    };
   }, []);
 
   // 🧠 Auto-scroll to top (show latest)

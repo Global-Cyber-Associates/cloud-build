@@ -14,15 +14,23 @@ const Devices = () => {
 
   useEffect(() => {
     // --- Fetch agents ---
-    socket.emit("get_data", { type: "agents" }, (response) => {
-      if (!response?.success) {
-        setError(response?.message || "Failed to fetch agents.");
-        setLoading(false);
-        return;
+    // --- Fetch agents via API ---
+    const token = sessionStorage.getItem("token");
+    fetch("http://localhost:5000/api/agents", {
+      headers: { "Authorization": `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (Array.isArray(data)) {
+        setAgents(data);
+      } else {
+        setError("Invalid response from server");
       }
-
-      const data = Array.isArray(response.data) ? response.data : [];
-      setAgents(data);
+      setLoading(false);
+    })
+    .catch(err => {
+      console.error("Failed to fetch agents:", err);
+      setError("Failed to load agents");
       setLoading(false);
     });
 

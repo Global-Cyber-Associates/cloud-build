@@ -5,8 +5,8 @@ const AgentSchema = new mongoose.Schema(
     agentId: {
       type: String,
       required: true,
-      unique: true,
       index: true,
+      // unique: true, ❌ Removed to allow same agentId across different tenants
     },
 
     // ⭐ MULTI-TENANT LINK
@@ -32,5 +32,8 @@ const AgentSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// ⭐ Compound index for tenant isolation
+AgentSchema.index({ agentId: 1, tenantId: 1 }, { unique: true });
 
 export default mongoose.model("Agent", AgentSchema);

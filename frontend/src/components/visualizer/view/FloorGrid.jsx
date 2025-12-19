@@ -9,48 +9,12 @@ export default function FloorGrid({ floor, updateDevices }) {
   const [locked, setLocked] = useState(false);
   const [cols, setCols] = useState(5);
 
+  // ✅ Sync devices from parent prop
   useEffect(() => {
-    const init = async () => {
-      if (!socket.connected) {
-        await new Promise((resolve) => socket.once("connect", resolve));
-      }
-
-      try {
-        const res = await fetchData("visualizer_data");
-        const data = res?.data || [];
-        const formatted = formatDevices(data, cols);
-        setDevices(formatted);
-        updateDevices(formatted);
-      } catch (err) {
-        console.error("❌ Failed to fetch devices via socket:", err);
-      }
-    };
-
-    init();
-
-    // 🔁 Auto-refresh every 5 seconds
-    const interval = setInterval(init, 1000);
-
-    const handleUpdate = (deviceUpdate) => {
-      setDevices((prev) => {
-        const exists = prev.find((d) => d.id === deviceUpdate.id || d.ip === deviceUpdate.ip);
-        if (exists) {
-          return prev.map((d) =>
-            d.id === deviceUpdate.id || d.ip === deviceUpdate.ip ? { ...d, ...deviceUpdate } : d
-          );
-        } else {
-          return [...prev, deviceUpdate];
-        }
-      });
-    };
-
-    socket.on("visualizer_update", handleUpdate);
-
-    return () => {
-      socket.off("visualizer_update", handleUpdate);
-      clearInterval(interval); // 🧹 Clear interval on unmount
-    };
-  }, [cols]);
+    if (floor && floor.devices) {
+        setDevices(floor.devices); 
+    }
+  }, [floor]);
 
   // ✅ Improved router detection logic
   const isRouterDevice = (ip) => {

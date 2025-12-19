@@ -20,13 +20,14 @@ function isRouter(ip = "") {
   );
 }
 
-export async function getLogsSnapshot() {
+export async function getLogsSnapshot(tenantId) {
+  if (!tenantId) return {};
   try {
     const now = Date.now();
 
     // ✅ 1. Agents (systeminfo)
     const agents = await SystemInfo.find(
-      {},
+      { tenantId },
       {
         agentId: 1,
         "data.hostname": 1,
@@ -60,13 +61,13 @@ export async function getLogsSnapshot() {
     });
 
     // ✅ 2. Unknown Devices (filter out routers)
-    const visualizers = await VisualizerData.find({}).lean();
+    const visualizers = await VisualizerData.find({ tenantId }).lean();
     const unknownDevices = visualizers.filter(
       (v) => v.noAgent && !isRouter(v.ip)
     );
 
     // ✅ 3. USB Devices (auto-update last_seen for active devices)
-    const usbEntries = await UsbDevice.find({}).lean();
+    const usbEntries = await UsbDevice.find({ tenantId }).lean();
     const usbDevices = usbEntries.map((entry) => ({
       agentId: entry.agentId,
       devices: (entry.data?.connected_devices || []).map((dev) => ({

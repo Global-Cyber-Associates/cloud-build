@@ -18,32 +18,46 @@ const TaskManager = () => {
       return;
     }
 
-    // 🔹 Initial fetch via socket
-    socket.emit("get_data", { type: "task_info", agentId: id }, (res) => {
-      console.log("🔍 Initial Task Info:", res);
+    // 🔹 Initial fetch via API (Secure)
+    const fetchTasks = async () => {
+      try {
+        const token = sessionStorage.getItem("token");
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/task-manager/${id}`, {
+             headers: { "Authorization": `Bearer ${token}` }
+        });
 
-      if (!res?.success || !res?.data?.length) {
-        setError(`No task info received for ${id}`);
+        const res = await response.json();
+        console.log("🔍 Initial Task Info (API):", res);
+
+        if (!res?.success || !res?.data?.length) {
+            setError(`No task info received for ${id}`);
+            setLoading(false);
+            return;
+        }
+
+        const doc = res.data[0];
+
+        setDevice({
+            hostname: doc.device?.hostname || `Agent ${doc.agentId}`,
+            os_type: doc.device?.os_type || "Unknown OS",
+            os_version: doc.device?.os_version || "",
+            machine_id: doc.agentId,
+        });
+
+        setTasks({
+            applications: doc.data.applications || [],
+            background_processes: doc.data.background_processes || [],
+        });
+
+      } catch (e) {
+        console.error("API error:", e);
+        setError("Failed to fetch task info.");
+      } finally {
         setLoading(false);
-        return;
       }
+    };
 
-      const doc = res.data[0];
-
-      setDevice({
-        hostname: doc.device?.hostname || `Agent ${doc.agentId}`,
-        os_type: doc.device?.os_type || "Unknown OS",
-        os_version: doc.device?.os_version || "",
-        machine_id: doc.agentId,
-      });
-
-      setTasks({
-        applications: doc.data.applications || [],
-        background_processes: doc.data.background_processes || [],
-      });
-
-      setLoading(false);
-    });
+    fetchTasks();
 
     // 🔹 Listen for live task updates
     socket.on("task_info_update", (update) => {

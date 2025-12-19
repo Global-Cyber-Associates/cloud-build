@@ -1,13 +1,13 @@
 {
-  "agentId": "rahul11",
-  "timestamp": "2025-12-08T07:34:52.296Z",
+  "agentId": "rahul-admin",
+  "timestamp": "2025-12-18T09:21:15.205Z",
   "devices": [
     {
       "drive_letter": "F",
-      "vendor_id": "USBSTOR\\DISK&VEN_GENERIC&PROD_MASS_STORAGE&REV_1.99\\D88F46AD7AA752D4&0",
+      "vendor_id": "USBSTOR\\DISK&VEN_SMI&PROD_USB_DISK&REV_1100\\CCYYMMDDHHMMSSDGEO23&0",
       "product_id": "\\\\.\\PHYSICALDRIVE2",
-      "description": "Generic Mass Storage USB Device",
-      "serial_number": "D88F46AD7AA752D4"
+      "description": "SMI USB DISK USB Device",
+      "serial_number": "AA00000000000489"
     }
   ]
 }

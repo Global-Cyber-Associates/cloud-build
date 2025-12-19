@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import socket from "../../../utils/socket.js";
 import "./installedapps.css";
 
 const InstalledApps = () => {
@@ -13,11 +12,31 @@ const InstalledApps = () => {
 
   useEffect(() => {
     if (!agentId) return;
-    socket.emit("get_data", { type: "installed_apps", agentId }, (res) => {
-      const doc = Array.isArray(res?.data) ? res.data[0] : res?.data;
-      setApps(doc?.data?.apps || []);
-      setLoading(false);
-    });
+
+    const fetchApps = async () => {
+      try {
+        const token = sessionStorage.getItem("token");
+        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/installed-apps/${agentId}`, {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+
+        if (!res.ok) throw new Error("Failed to fetch");
+        
+        const json = await res.json();
+        if (json.success && json.data) {
+           // Handle both single doc and aggregated structure if needed, but API returns single doc
+           setApps(json.data.data?.apps || []);
+        }
+      } catch (err) {
+        console.error("Fetch error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchApps();
   }, [agentId]);
 
   const filteredApps = apps.filter((a) =>

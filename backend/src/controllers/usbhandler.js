@@ -8,8 +8,13 @@ import path from "path";
  * If it doesn't exist, create it with "WaitingForApproval" status.
  * Emits the status back to the agent via socket.
  */
-export async function checkUsbStatus(agentId, connectedDevices, socket) {
+export async function checkUsbStatus(agentId, connectedDevices, tenantId, socket) {
   if (!connectedDevices || connectedDevices.length === 0) return [];
+
+  if (!tenantId) {
+    console.error("❌ checkUsbStatus error: Missing tenantId");
+    return [];
+  }
 
   // --- Save all received data to JSON for debugging ---
   try {
@@ -24,12 +29,12 @@ export async function checkUsbStatus(agentId, connectedDevices, socket) {
     console.error("❌ Failed to write received.json:", err);
   }
 
-  // --- Ensure agent document exists ---
-  let agentDoc = await USBDevices.findOne({ agentId });
+  // --- Ensure agent document exists (Tenant Scoped) ---
+  let agentDoc = await USBDevices.findOne({ agentId, tenantId });
   if (!agentDoc) {
-    agentDoc = new USBDevices({ agentId, data: { connected_devices: [] } });
+    agentDoc = new USBDevices({ agentId, tenantId, data: { connected_devices: [] } });
     await agentDoc.save();
-    console.log(`[🆕] Agent document created for agentId=${agentId}`);
+    console.log(`[🆕] Agent document created for agentId=${agentId} tenant=${tenantId}`);
   } else if (!agentDoc.data) {
     agentDoc.data = { connected_devices: [] };
     await agentDoc.save();

@@ -31,6 +31,10 @@ import dashboardRoutes from "./api/d-board.js";
 import authRoutes from "./api/auth.js";
 import userRoutes from "./api/users.js";
 
+import agentRoutes from "./api/agentlist.js";
+import installedAppsRoutes from "./api/installedApps.js";
+import taskManagerRoutes from "./api/taskManager.js";
+
 import { getLogsSnapshot } from "./controllers/logsController.js";
 import { isRouterIP } from "./utils/networkHelpers.js";
 
@@ -62,6 +66,9 @@ app.use("/api/logs-status", logsStatusRoute);
 app.use("/api/usb", usbRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/agents", agentRoutes);
+app.use("/api/installed-apps", installedAppsRoutes);
+app.use("/api/task-manager", taskManagerRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 
 app.get("/api/auth/debug", (_req, res) =>
@@ -105,9 +112,14 @@ io.use(async (socket, next) => {
       return next(new Error("Authentication error: No token provided"));
     }
 
+    // 🔹 STRIP "Bearer " prefix if present
+    const cleanToken = token.startsWith("Bearer ") ? token.slice(7, token.length) : token;
+
+    // console.log(`[SocketAuth] Token: ${cleanToken.substring(0, 10)}... (Original: ${token.substring(0,10)}...)`);
+
     // 1️⃣ Try as USER (JWT)
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(cleanToken, process.env.JWT_SECRET);
       if (decoded && decoded.tenantId) {
         socket.user = decoded;
         socket.tenantId = decoded.tenantId;
@@ -119,7 +131,7 @@ io.use(async (socket, next) => {
     }
 
     // 2️⃣ Try as AGENT (Enrollment Key)
-    const tenant = await Tenant.findOne({ enrollmentKey: token });
+    const tenant = await Tenant.findOne({ enrollmentKey: cleanToken });
     if (tenant) {
       socket.tenantId = tenant._id.toString();
       socket.isAgent = true;
@@ -143,6 +155,7 @@ io.on("connection", (socket) => {
   console.log(`🔌 Connected: ${socket.id} (${ip}) - ${type} [Tenant: ${socket.tenantId}]`);
 
   if (socket.tenantId) {
+    socket.join(socket.tenantId); // ⭐ Join tenant room for broadcasts
     global.ACTIVE_TENANTS.add(socket.tenantId.toString());
   }
 
@@ -240,7 +253,11 @@ io.on("connection", (socket) => {
 
       if (payload.type === "usb_devices") {
         const devices = payload.data.connected_devices || [];
-        const status = await checkUsbStatus(payload.agentId, devices);
+        const status = await checkUsbStatus(payload.agentId, devices, socket.tenantId);
+        // We emit back via socket 'usb_validation' manually here or inside checkUsbStatus?
+        // usbhandler.js handles emission if socket is passed, but here we didn't pass socket object yet.
+        // Let's rely on the return value or modify checking.
+
         socket.emit("usb_validation", { devices: status });
         return;
       }
@@ -295,15 +312,35 @@ app.use("/api/scan", scanRunRouter);
 // -----------------------------------------------------
 // LOG SNAPSHOT LOOP
 // -----------------------------------------------------
+// -----------------------------------------------------
+// LOG SNAPSHOT LOOP (MULTI-TENANT)
+// -----------------------------------------------------
 setInterval(async () => {
-  const snapshot = await getLogsSnapshot();
+  // Iterate over all active tenants
+  // console.log(`[DEBUG] Active Tenants: ${[...global.ACTIVE_TENANTS]}`); // Too verbose for 5s loop? Maybe once in a while.
 
-  snapshot.unknownDevices = snapshot.unknownDevices.filter(
-    (d) => !isRouterIP(d.ip, d.hostname, d.vendor)
-  );
+  for (const tenantId of global.ACTIVE_TENANTS) {
+    if (!tenantId) continue;
 
-  await LogsStatus.findOneAndUpdate({}, { $set: snapshot }, { upsert: true });
-  io.emit("logs_status_update", snapshot);
+    try {
+      const snapshot = await getLogsSnapshot(tenantId);
+
+      // Filter unknown devices
+      if (snapshot.unknownDevices) {
+        snapshot.unknownDevices = snapshot.unknownDevices.filter(
+          (d) => !isRouterIP(d.ip, d.hostname, d.vendor)
+        );
+      }
+
+      // DB WRITE (Scoped)
+      await LogsStatus.findOneAndUpdate({ tenantId }, { $set: { ...snapshot, tenantId } }, { upsert: true });
+
+      // Emit to specific tenant room
+      io.to(tenantId).emit("logs_status_update", snapshot);
+    } catch (e) {
+      console.error("Logs loop error for tenant", tenantId, e);
+    }
+  }
 }, 5000);
 
 // -----------------------------------------------------

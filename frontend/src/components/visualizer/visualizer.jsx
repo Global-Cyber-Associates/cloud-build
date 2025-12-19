@@ -11,16 +11,23 @@ export default function Visualizer() {
   const [loading, setLoading] = useState(false);
 
   // ✅ Fetch devices via socket
+  // ✅ Fetch devices via API (HTTP) for reliable load
   useEffect(() => {
     setLoading(true);
+    const token = sessionStorage.getItem("token");
 
-    fetchData("visualizer_data")
-      .then((res) => {
-        if (!res?.data || !Array.isArray(res.data)) return;
+    fetch(`http://localhost:5000/api/visualizer-data`, {
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!Array.isArray(data)) return;
 
-        const fetchedDevices = res.data.map((d, i) => ({
+        const fetchedDevices = data.map((d, i) => ({
           id: i + 1,
-          name: d.agentId || "Unknown", // ✅ always use agentId
+          name: d.agentId || "Unknown",
           ip: d.ip || "N/A",
           mac: d.mac || "Unknown",
           noAgent: d.noAgent,
