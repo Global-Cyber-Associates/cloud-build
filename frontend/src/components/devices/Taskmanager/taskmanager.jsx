@@ -27,7 +27,7 @@ const TaskManager = () => {
         });
 
         const res = await response.json();
-        console.log("🔍 Initial Task Info (API):", res);
+        // console.log("🔍 Initial Task Info (API):", res);
 
         if (!res?.success || !res?.data?.length) {
             setError(`No task info received for ${id}`);
