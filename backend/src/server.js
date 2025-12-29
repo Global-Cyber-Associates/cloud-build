@@ -22,6 +22,7 @@ import { seedUsers } from "./seed.js";
 
 import * as GetData from "./get.js";
 import { checkUsbStatus } from "./controllers/usbhandler.js";
+import { activateLicense } from "./utils/licenseManager.js";
 
 import usbRoutes from "./api/usb.js";
 import visualizerDataRoute from "./api/visualizerData.js";
@@ -35,6 +36,7 @@ import adminRoutes from "./api/admin.js";
 import agentRoutes from "./api/agentlist.js";
 import installedAppsRoutes from "./api/installedApps.js";
 import taskManagerRoutes from "./api/taskManager.js";
+import licenseRoutes from "./api/license.js";
 
 import { getLogsSnapshot } from "./controllers/logsController.js";
 import { isRouterIP } from "./utils/networkHelpers.js";
@@ -47,6 +49,7 @@ import VisualizerData from "./models/VisualizerData.js";
 
 import { initIO } from "./socket-nvs.js";
 import runDashboardWorker from "./D-board/d-aggregator.js";
+import scanRunRouter from "./api/scanRun.js";
 
 // -----------------------------------------------------
 // CONFIG
@@ -72,6 +75,7 @@ app.use("/api/agents", agentRoutes);
 app.use("/api/installed-apps", installedAppsRoutes);
 app.use("/api/task-manager", taskManagerRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/license", licenseRoutes);
 
 app.get("/api/auth/debug", (_req, res) =>
   res.json({ msg: "AUTH ROUTES ACTIVE" })
@@ -93,6 +97,7 @@ const io = new Server(server, {
 });
 
 initIO(io);
+app.set("io", io);
 
 const logPath = path.join(process.cwd(), "agent_data_log.json");
 
@@ -164,24 +169,57 @@ io.on("connection", (socket) => {
   // -------------------------------
   // AGENT REGISTRATION
   // -------------------------------
-  socket.on("register_agent", async (agentId) => {
+  socket.on("register_agent", async (payload) => {
+    if (!payload) return;
+    // Support both old (string) and new (object) registration
+    const agentId = typeof payload === "string" ? payload : payload.agentId;
+    const fingerprint = payload?.fingerprint;
+
     if (!agentId) return;
 
     global.ACTIVE_AGENTS[agentId] = socket.id;
 
-    await Agent.findOneAndUpdate(
-      { agentId, tenantId: socket.tenantId }, // Ensure tenant binding
-      {
-        $set: {
-          tenantId: socket.tenantId,
-          status: "online",
-          lastSeen: new Date(),
-          socketId: socket.id,
-          ip,
-        },
-      },
-      { upsert: true }
+    const updateFields = {
+      tenantId: socket.tenantId,
+      status: "online",
+      lastSeen: new Date(),
+      socketId: socket.id,
+      ip,
+    };
+
+    if (fingerprint) {
+      updateFields.fingerprint = fingerprint;
+    }
+
+    const agent = await Agent.findOneAndUpdate(
+      { agentId, tenantId: socket.tenantId },
+      { $set: updateFields },
+      { upsert: true, new: true }
     );
+
+    // If using the new licensing model, inform agent of status
+    socket.emit("registration_status", {
+      isLicensed: agent.isLicensed,
+      fingerprintMatched: agent.fingerprint === fingerprint
+    });
+  });
+
+  // -------------------------------
+  // LICENSE ACTIVATION
+  // -------------------------------
+  socket.on("license_activate", async (payload, callback) => {
+    try {
+      if (!socket.isAgent || !socket.tenantId) {
+        return callback({ success: false, message: "Unauthorized" });
+      }
+
+      const { agentId, fingerprint } = payload;
+      const token = await activateLicense(socket.tenantId, agentId, fingerprint);
+
+      callback({ success: true, token });
+    } catch (err) {
+      callback({ success: false, message: err.message });
+    }
   });
 
   // -------------------------------
@@ -264,6 +302,17 @@ io.on("connection", (socket) => {
         return;
       }
 
+      // 🔐 LICENSE ENFORCEMENT
+      const agent = await Agent.findOne({ agentId: payload.agentId, tenantId: socket.tenantId });
+      if (!agent || !agent.isLicensed) {
+        console.warn(`[DENIED] Data from unlicensed/revoked agent: ${payload.agentId} (Tenant: ${socket.tenantId})`);
+        return socket.emit("agent_response", {
+          success: false,
+          message: "Agent license revoked or not found. Please reactivate.",
+          code: "LICENSE_REVOKED"
+        });
+      }
+
       await saveAgentData(payload, socket.tenantId);
 
       socket.emit("agent_response", {
@@ -306,9 +355,8 @@ setInterval(async () => {
 }, 3500);
 
 // -----------------------------------------------------
-// LOAD scanRunRouter
+// ROUTES: SCAN RUN
 // -----------------------------------------------------
-import scanRunRouter from "./api/scanRun.js";
 app.use("/api/scan", scanRunRouter);
 
 // -----------------------------------------------------

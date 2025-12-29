@@ -260,6 +260,12 @@ if __name__ == "__main__":
         safe_print("[SCAN] Scanner started in-thread or failed to spawn subprocess.")
 
     # main loop
+    # main loop
+    import functions.sender as sender
     while True:
-        run_scans()
+        if sender.IS_LICENSED:
+            run_scans()
+        else:
+            # Maybe run minimal heartbeat if not licensed
+            pass
         time.sleep(3)

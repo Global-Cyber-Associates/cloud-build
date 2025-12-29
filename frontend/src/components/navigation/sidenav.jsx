@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import {
   Menu, X, LayoutDashboard, Monitor, Smartphone,
   Usb, Scan, ClipboardList, Star, ShieldCheck, Users,
-  AlertTriangle, Download, LogOut, User as UserIcon, Settings
+  AlertTriangle, Download, LogOut, User as UserIcon, Settings, Key
 } from "lucide-react";
 
 import "./sidenav.css";
@@ -43,6 +43,7 @@ const Sidebar = ({ onToggle, isOpen: controlledIsOpen }) => {
   const adminNavItems = [
     { label: "Admin Dashboard", path: "/admin/dashboard", icon: <ShieldCheck size={20} /> },
     { label: "Manage Users", path: "/admin/users", icon: <Users size={20} /> },
+    { label: "License Manager", path: "/admin/licenses", icon: <Key size={20} /> },
     { label: "Download", path: "/download", icon: <Download size={20} /> },
   ];
 

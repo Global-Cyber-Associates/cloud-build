@@ -18,6 +18,15 @@ const tenantSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
+    maxSeats: {
+      type: Number,
+      default: 5, // Default 5 seats
+    },
+    licenseKey: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
   },
   { timestamps: true }
 );

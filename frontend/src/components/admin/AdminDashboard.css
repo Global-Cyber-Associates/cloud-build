@@ -6,22 +6,24 @@
 }
 
 .admin-section {
-  background: #1b263b;
-  border-radius: 12px;
+  background: #132639;
+  border-radius: 14px;
   padding: 24px;
   margin-bottom: 30px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  border: 1px solid #1e3b52;
 }
 
 .admin-section h2 {
-  color: #fff;
+  color: #a8dadc;
   margin-bottom: 20px;
-  font-size: 1.4rem;
-  border-bottom: 1px solid #334155;
-  padding-bottom: 10px;
+  font-size: 1.25rem;
+  font-weight: 600;
+  border-bottom: 1px solid #1e3b52;
+  padding-bottom: 12px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .admin-table {
@@ -32,34 +34,35 @@
 
 .admin-table th {
   text-align: left;
-  padding: 12px;
-  background: #0b1e2d;
-  color: #fff;
+  padding: 12px 14px;
+  background: #1b364b;
+  color: #a8dadc;
 }
 
 .admin-table td {
-  padding: 12px;
-  border-bottom: 1px solid #334155;
+  padding: 12px 14px;
+  border-bottom: 1px solid #1e3b52;
   vertical-align: middle;
 }
 
 .admin-table tr:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .btn-approve {
-  background: #2ecc71;
+  background: #10b981;
   color: #fff;
   border: none;
-  padding: 6px 14px;
-  border-radius: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
   font-weight: 600;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .btn-approve:hover {
-  background: #27ae60;
+  background: #059669;
   transform: translateY(-1px);
 }
 

@@ -23,6 +23,7 @@ import Register from "./components/navigation/Register.jsx";
 import CreateUser from "./components/admin/CreateUser.jsx";
 import AdminDashboard from "./components/admin/AdminDashboard.jsx";
 import ManageUsers from "./components/admin/ManageUsers.jsx";
+import LicenseManager from "./components/admin/LicenseManager.jsx";
 // import ManageUsers from "./components/admin/ManageUsers.jsx"; // create later
 
 // PUBLIC PAGES
@@ -119,6 +120,15 @@ function App() {
           element={
             <ProtectedLayout adminOnly={true}>
               <CreateUser />
+            </ProtectedLayout>
+          }
+        />
+        {/* ADMIN: LICENSE MANAGER */}
+        <Route
+          path="/admin/licenses"
+          element={
+            <ProtectedLayout adminOnly={true}>
+              <LicenseManager />
             </ProtectedLayout>
           }
         />

@@ -108,6 +108,7 @@ function AdminDashboard() {
                 <th>Enrollment Key</th>
                 <th>Total Devices</th>
                 <th>Status</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -126,6 +127,15 @@ function AdminDashboard() {
                     <span className="badge-pending" style={{ background: ten.isActive ? '#2ecc71' : '#e74c3c' }}>
                       {ten.isActive ? "Active" : "Disabled"}
                     </span>
+                  </td>
+                  <td>
+                    <button
+                      className="btn-approve"
+                      style={{ padding: '6px 12px', fontSize: '0.8rem', background: '#3498db' }}
+                      onClick={() => window.location.href = '/admin/licenses'}
+                    >
+                      Manage Licenses
+                    </button>
                   </td>
                 </tr>
               ))}

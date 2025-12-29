@@ -14,7 +14,8 @@ export const seedUsers = async () => {
       const key = "noc_" + crypto.randomBytes(16).toString("hex");
       adminTenant = await Tenant.create({
         name: "System Administration",
-        enrollmentKey: key
+        enrollmentKey: key,
+        licenseKey: "GCA-ADMIN-2025"
       });
     }
 
@@ -45,7 +46,8 @@ export const seedUsers = async () => {
       const key = "noc_" + crypto.randomBytes(16).toString("hex");
       clientTenant = await Tenant.create({
         name: "Default Client Company",
-        enrollmentKey: key
+        enrollmentKey: key,
+        licenseKey: "GCA-CLIENT-2025"
       });
     }
 

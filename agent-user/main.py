@@ -128,6 +128,10 @@ if __name__ == "__main__":
     threading.Thread(target=start_usb_monitor, daemon=True).start()
 
     # main loop
+    import functions.sender as sender
     while True:
-        run_scans()
+        if sender.IS_LICENSED:
+            run_scans()
+        else:
+            pass
         time.sleep(3)
