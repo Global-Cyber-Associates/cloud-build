@@ -24,9 +24,9 @@ function extractIPs(sys) {
   }
 
   // ⭐ Filter out loopback and APIPA
-  return ips.filter(ip => 
-    ip && 
-    !ip.startsWith("127.") && 
+  return ips.filter(ip =>
+    ip &&
+    !ip.startsWith("127.") &&
     !ip.startsWith("169.254.")
   );
 }
@@ -70,15 +70,20 @@ async function runDashboardWorker(interval = 4500) {
 
           // Resolve the "Actual" LAN IP
           let finalIP = agent.ip || "unknown";
-          
+
           const possibleIPs = extractIPs(sysData);
-          const routableIP = possibleIPs.find(ip => 
-            !ip.startsWith("127.") && 
+          const routableIP = possibleIPs.find(ip =>
+            !ip.startsWith("127.") &&
             !ip.startsWith("169.254.") &&
             (ip.startsWith("192.") || ip.startsWith("10.") || ip.startsWith("172."))
           );
 
-          if (finalIP.startsWith("127.") || finalIP === "::1" || finalIP === "unknown") {
+          // ⭐ FIX: Prioritize Agent's Reported Local IP over Socket Public IP
+          // If we have a valid routable local IP, use it.
+          if (routableIP) {
+            finalIP = routableIP;
+          } else if (finalIP.startsWith("127.") || finalIP === "::1" || finalIP === "unknown") {
+            // Fallback if socket IP is useless
             if (routableIP) finalIP = routableIP;
           }
 
@@ -109,7 +114,7 @@ async function runDashboardWorker(interval = 4500) {
           for (const [k, v] of allDevicesMap.entries()) {
             const macMatch = normMac && v.mac === normMac;
             const ipMatch = device.ip && device.ip !== 'unknown' && v.ip === device.ip;
-            
+
             if (macMatch || ipMatch) {
               existingKey = k;
               existingData = v;
@@ -119,10 +124,10 @@ async function runDashboardWorker(interval = 4500) {
 
           if (existingData) {
             if (isAgent) {
-              allDevicesMap.set(existingKey, { 
-                ...existingData, 
-                ...device, 
-                source: 'agent', 
+              allDevicesMap.set(existingKey, {
+                ...existingData,
+                ...device,
+                source: 'agent',
                 noAgent: false,
                 mac: normMac || existingData.mac,
                 vendor: device.vendor || existingData.vendor || "Unknown"
@@ -131,8 +136,8 @@ async function runDashboardWorker(interval = 4500) {
               if (existingData.source !== 'agent') {
                 allDevicesMap.set(existingKey, { ...existingData, ...device, mac: normMac });
               } else {
-                allDevicesMap.set(existingKey, { 
-                  ...existingData, 
+                allDevicesMap.set(existingKey, {
+                  ...existingData,
                   mac: existingData.mac || normMac,
                   vendor: existingData.vendor || device.vendor || "Unknown",
                   isRouter: existingData.isRouter || isRouterIP(device.ip, device.hostname, device.vendor)
@@ -144,13 +149,13 @@ async function runDashboardWorker(interval = 4500) {
 
           let key = normMac || device.ip;
           if ((!key || key === 'unknown') && isAgent) key = device.agentId;
-          
+
           if (key && key !== 'unknown') {
             const isRouter = isRouterIP(device.ip, device.hostname, device.vendor);
-            allDevicesMap.set(key, { 
-              ...device, 
-              mac: normMac, 
-              source: isAgent ? 'agent' : 'scanner', 
+            allDevicesMap.set(key, {
+              ...device,
+              mac: normMac,
+              source: isAgent ? 'agent' : 'scanner',
               noAgent: !isAgent,
               isRouter
             });
@@ -159,10 +164,10 @@ async function runDashboardWorker(interval = 4500) {
 
         // Populate Map
         rawAgentsFormatted.forEach(a => addOrUpdateDevice(a, true));
-        
+
         scanRaw.forEach(scan => {
           if (!scan.ip || scan.ip.startsWith("127.") || scan.ip.startsWith("169.254.")) return;
-          
+
           // Relaxed Filter: Only skip if it looks like absolute noise AND is not in target range 
           // (We will filter by targetSubnet later anyway)
           addOrUpdateDevice({
@@ -189,13 +194,13 @@ async function runDashboardWorker(interval = 4500) {
         if (!targetSubnet) {
           const firstOnline = rawAgentsFormatted.find(a => a.status === 'online' && a.ip !== 'unknown');
           if (firstOnline) {
-             const pts = firstOnline.ip.split('.');
-             if (pts.length === 4) targetSubnet = pts.slice(0, 3).join('.') + '.';
+            const pts = firstOnline.ip.split('.');
+            if (pts.length === 4) targetSubnet = pts.slice(0, 3).join('.') + '.';
           }
         }
 
         // ⭐ 6. FILTER: LAN-Only stable view
-        const filteredDevices = (targetSubnet 
+        const filteredDevices = (targetSubnet
           ? allEntries.filter(d => d.ip && d.ip.startsWith(targetSubnet))
           : allEntries)
           .sort((a, b) => {
@@ -232,7 +237,8 @@ async function runDashboardWorker(interval = 4500) {
           vendor: d.vendor || "Unknown",
           hostname: d.hostname || d.agentId || "Unknown",
           noAgent: d.noAgent ?? true,
-          isRouter: d.isRouter || false
+          isRouter: d.isRouter || false,
+          status: d.status // ⭐ FIX: Include status so offline/online toggle triggers update
         }));
 
         // 9. Check if data actually changed to prevent flickering
@@ -280,7 +286,7 @@ async function runDashboardWorker(interval = 4500) {
             const io = getIO();
             io.to(tStr).emit("dashboard_update", snapshot);
             io.to(tStr).emit("visualizer_refresh", vizItems);
-          } catch (e) {}
+          } catch (e) { }
         }
 
       } catch (err) {
