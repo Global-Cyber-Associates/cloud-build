@@ -19,14 +19,25 @@ jobs:
           script: |
             set -e
 
+            # ---- LOAD NODE (NVM) ----
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+            echo "Node version:"
+            node -v
+            npm -v
+
+            # ---- PULL LATEST CODE ----
             cd ~/cloud-build
             git fetch origin
             git reset --hard origin/master
 
-            # ---- FRONTEND ----
+            # ---- FRONTEND BUILD ----
             cd frontend
             npm install
             npm run build
+
+            # Point nginx to latest build (symlink)
             sudo ln -sfn /home/ubuntu/cloud-build/frontend/dist /var/www/react_app
 
             # ---- BACKEND ----
@@ -37,3 +48,5 @@ jobs:
             # ---- NGINX ----
             sudo nginx -t
             sudo systemctl reload nginx
+
+            echo "✅ Deployment completed successfully"
