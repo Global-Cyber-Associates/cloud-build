@@ -27,9 +27,6 @@ jobs:
             cd frontend
             npm install
             npm run build
-
-            sudo chown -R www-data:www-data dist
-            sudo chmod -R 755 dist
             sudo ln -sfn /home/ubuntu/cloud-build/frontend/dist /var/www/react_app
 
             # ---- BACKEND ----
