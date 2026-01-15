@@ -1,27 +1,42 @@
-script: |
-  set -e
+name: Deploy to EC2
 
-  cd ~/cloud-build
-  git fetch origin
-  git reset --hard origin/master
+on:
+  push:
+    branches:
+      - master
 
-  # ---- FRONTEND BUILD ----
-  cd frontend
-  npm install
-  npm run build
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
 
-  # Permissions for nginx
-  sudo chown -R www-data:www-data dist
-  sudo chmod -R 755 dist
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
 
-  # (Optional) Recreate symlink safely
-  sudo ln -sfn /home/ubuntu/cloud-build/frontend/dist /var/www/react_app
+            cd ~/cloud-build
+            git fetch origin
+            git reset --hard origin/master
 
-  # ---- BACKEND ----
-  cd ../backend
-  npm install --omit=dev
-  pm2 restart server
+            # ---- FRONTEND ----
+            cd frontend
+            npm install
+            npm run build
 
-  # ---- NGINX ----
-  sudo nginx -t
-  sudo systemctl reload nginx
+            sudo chown -R www-data:www-data dist
+            sudo chmod -R 755 dist
+            sudo ln -sfn /home/ubuntu/cloud-build/frontend/dist /var/www/react_app
+
+            # ---- BACKEND ----
+            cd ../backend
+            npm install --omit=dev
+            pm2 restart server
+
+            # ---- NGINX ----
+            sudo nginx -t
+            sudo systemctl reload nginx
